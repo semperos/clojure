@@ -219,7 +219,6 @@ public class LindseyReader {
                             // Handle reserved symbols
                             Symbol reservedSymbol = (Symbol) interpreted;
                             // System.out.println("THE SYMBOL!" + reservedSymbol.getClass().getName() + ": " + reservedSymbol.getNamespace() + "/" + reservedSymbol.getName());
-
                             IFn reservedSymbolFn = getReservedSymbol(reservedSymbol);
                             if(reservedSymbolFn != null) {
                                 // System.out.println("RESERVED! " + reservedSymbol.toString());
@@ -232,7 +231,22 @@ public class LindseyReader {
 				return ret;
                             } else {
                                 // System.out.println("WAS SYMBOL, but nothing special.");
-                                return reservedSymbol;
+                                while(isWhitespace(ch))
+                                    ch = read1(r);
+
+                                // Handle invocation
+                                ch = read1(r);
+                                if (ch == '(') {
+                                    IFn listReader = getMacro(ch);
+                                    Object ret = listReader.invoke(r, (char) ch);
+                                    ArrayList retArrayList = new ArrayList((PersistentList) ret);
+                                    // Put symbol at the front of the list so it's invoked
+                                    retArrayList.add(0, reservedSymbol);
+                                    return PersistentList.create(retArrayList);
+                                } else {
+                                    unread(r, ch);
+                                    return reservedSymbol;
+                                }
                             }
                         } else {
                             return interpreted;

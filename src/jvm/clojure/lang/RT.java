@@ -178,6 +178,8 @@ static Object readTrueFalseUnknown(String s){
 
 static public final Namespace CLOJURE_NS = Namespace.findOrCreate(Symbol.intern("clojure.core"));
 //static final Namespace USER_NS = Namespace.findOrCreate(Symbol.intern("user"));
+final static public Var CURRENT_READER =
+		Var.intern(CLOJURE_NS, Symbol.intern("*current-reader*"), ClojureReaders.LISP_READER).setDynamic();
 final static public Var OUT =
 		Var.intern(CLOJURE_NS, Symbol.intern("*out*"), new OutputStreamWriter(System.out)).setDynamic();
 final static public Var IN =
@@ -260,7 +262,7 @@ public static List<String> processCommandLine(String[] args){
 	return arglist;
 }
 
-// duck typing stderr plays nice with e.g. swank 
+// duck typing stderr plays nice with e.g. swank
 public static PrintWriter errPrintWriter(){
     Writer w = (Writer) ERR.deref();
     if (w instanceof PrintWriter) {
@@ -1259,7 +1261,7 @@ static public float floatCast(long x){
 static public float floatCast(double x){
 	if(x < -Float.MAX_VALUE || x > Float.MAX_VALUE)
 		throw new IllegalArgumentException("Value out of range for float: " + x);
-	
+
 	return (float) x;
 }
 
@@ -1778,8 +1780,14 @@ static public String printString(Object x){
 }
 
 static public Object readString(String s){
-	PushbackReader r = new PushbackReader(new StringReader(s));
-	return LispReader.read(r, true, null, false);
+        PushbackReader r = new PushbackReader(new StringReader(s));
+        if (RT.CURRENT_READER.deref() == ClojureReaders.LISP_READER) {
+            return LispReader.read(r, true, null, false);
+        } else if (RT.CURRENT_READER.deref() == ClojureReaders.LINDSEY_READER) {
+            return LindseyReader.read(r, true, null, false);
+        } else {
+            throw new IllegalArgumentException("ClojureReader " + RT.CURRENT_READER.deref() + " is not defined.");
+        }
 }
 
 static public void print(Object x, Writer w) throws IOException{

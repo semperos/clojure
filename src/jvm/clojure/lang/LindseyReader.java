@@ -33,6 +33,7 @@ import java.math.BigInteger;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.HashMap;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -58,7 +59,7 @@ public class LindseyReader {
 
     static IFn[] macros = new IFn[256];
     static IFn[] dispatchMacros = new IFn[256];
-    static PersistentHashMap reservedSymbols = PersistentHashMap.EMPTY;
+    static HashMap reservedSymbols = new HashMap<Symbol, IFn>();
     //static Pattern symbolPat = Pattern.compile("[:]?([\\D&&[^:/]][^:/]*/)?[\\D&&[^:/]][^:/]*");
     static Pattern symbolPat = Pattern.compile("[:]?([\\D&&[^/]].*/)?(/|[\\D&&[^/]][^/]*)");
     //static Pattern varPat = Pattern.compile("([\\D&&[^:\\.]][^:\\.]*):([\\D&&[^:\\.]][^:\\.]*)");
@@ -110,8 +111,10 @@ public class LindseyReader {
 	dispatchMacros['<'] = new UnreadableReader();
 	dispatchMacros['_'] = new DiscardReader();
 
-        reservedSymbols.assoc(Symbol.intern(null, "function"),
-                              new FunctionReader());
+        reservedSymbols.put(Symbol.intern("function"),
+                            new FunctionReader());
+        reservedSymbols.put(Symbol.intern("let"),
+                            new LetReader());
     }
 
     static boolean isWhitespace(int ch){
@@ -212,11 +215,14 @@ public class LindseyReader {
                             return null;
 			Object interpreted = interpretToken(token);
                         if (interpreted instanceof Symbol) {
+                            // System.out.println("INTERPRETED! " + interpreted);
                             // Handle reserved symbols
                             Symbol reservedSymbol = (Symbol) interpreted;
+                            // System.out.println("THE SYMBOL!" + reservedSymbol.getClass().getName() + ": " + reservedSymbol.getNamespace() + "/" + reservedSymbol.getName());
 
                             IFn reservedSymbolFn = getReservedSymbol(reservedSymbol);
                             if(reservedSymbolFn != null) {
+                                // System.out.println("RESERVED! " + reservedSymbol.toString());
 				Object ret = reservedSymbolFn.invoke(r);
 				if(RT.suppressRead())
                                     return null;
@@ -224,6 +230,9 @@ public class LindseyReader {
 				if(ret == r)
                                     continue;
 				return ret;
+                            } else {
+                                // System.out.println("WAS SYMBOL, but nothing special.");
+                                return reservedSymbol;
                             }
                         } else {
                             return interpreted;
@@ -431,6 +440,7 @@ public class LindseyReader {
     }
 
     static private IFn getReservedSymbol(Symbol sym){
+        // System.out.println("IS IT RESERVED?" + sym.getClass().getName() + ": " + sym.getNamespace() + "/" + sym.getName());
         return (IFn) reservedSymbols.get(sym);
     }
 
@@ -1009,7 +1019,7 @@ public class LindseyReader {
 
     }
 
-public static class FunctionReader extends AFn{
+public static class FunctionReader extends AFn {
 	public Object invoke(Object reader) {
             PushbackReader r = (PushbackReader) reader;
             int line = -1;
@@ -1019,12 +1029,58 @@ public static class FunctionReader extends AFn{
                     line = ((LineNumberingPushbackReader) r).getLineNumber();
                     column = ((LineNumberingPushbackReader) r).getColumnNumber()-1;
                 }
-            System.out.println("Woohoo! Function definition time!");
-            List list = readReservedForm(')', r, true);
+            // System.out.println("Woohoo! Function definition time!");
+            List list = readReservedForm(Symbol.intern("defn"), r, true);
             if(list.isEmpty())
                 return PersistentList.EMPTY;
             IObj s = (IObj) PersistentList.create(list);
             //		IObj s = (IObj) RT.seq(list);
+            if(line != -1)
+                {
+                    return s.withMeta(RT.map(RT.LINE_KEY, line, RT.COLUMN_KEY, column));
+                }
+            else
+                return s;
+	}
+
+    }
+
+public static class LetReader extends AFn {
+	public Object invoke(Object reader) {
+            PushbackReader r = (PushbackReader) reader;
+            int line = -1;
+            int column = -1;
+            if(r instanceof LineNumberingPushbackReader)
+                {
+                    line = ((LineNumberingPushbackReader) r).getLineNumber();
+                    column = ((LineNumberingPushbackReader) r).getColumnNumber()-1;
+                }
+            // System.out.println("Woohoo! Function definition time!");
+            List list = readReservedForm(Symbol.intern("let"), r, true);
+            Object bindingForm = list.get(1);
+            if (!(bindingForm instanceof PersistentVector))
+                throw new IllegalArgumentException("The 'let' reserved word expects a vector of binding forms.");
+            ArrayList bindingFormList = new ArrayList((PersistentVector) bindingForm);
+            if((bindingFormList.size() % 3) != 0)
+                throw new IllegalArgumentException("The 'let' reserved word requires bindings in the form [a = 1, b = 2]");
+            ArrayList<Integer> indices = new ArrayList<Integer>();
+            for(int i = 1; i < bindingFormList.size(); i += 3) {
+                if(!Symbol.intern("=").equals(bindingFormList.get(i)))
+                    throw new IllegalArgumentException("The 'let' reserved word requires bindings in the form [a = 1, b = 2]");
+                indices.add(i);
+            }
+            // Handle shrinking indices as items are removed left to right
+            int numRemoved = 0;
+            for (Integer i : indices) {
+                bindingFormList.remove(i - numRemoved++);
+            }
+            // Put massaged binding form back as second item in let form
+            ArrayList finalLetList = (ArrayList) list;
+            finalLetList.set(1, PersistentVector.create(bindingFormList));
+            if(finalLetList.isEmpty())
+                return PersistentList.EMPTY;
+            IObj s = (IObj) PersistentList.create(finalLetList);
+            //		IObj s = (IObj) RT.seq(finalLetList);
             if(line != -1)
                 {
                     return s.withMeta(RT.map(RT.LINE_KEY, line, RT.COLUMN_KEY, column));
@@ -1205,12 +1261,13 @@ public static class FunctionReader extends AFn{
 	return a;
     }
 
-    public static List readReservedForm(char delim, PushbackReader r, boolean isRecursive) {
+    public static List readReservedForm(Symbol clojureSym, PushbackReader r, boolean isRecursive) {
 	final int firstline =
             (r instanceof LineNumberingPushbackReader) ?
             ((LineNumberingPushbackReader) r).getLineNumber() : -1;
 
 	ArrayList a = new ArrayList();
+        a.add(clojureSym);
 
 	for(; ;)
             {
@@ -1227,8 +1284,8 @@ public static class FunctionReader extends AFn{
                             throw Util.runtimeException("EOF while reading, starting at line " + firstline);
                     }
 
-		if(ch == delim)
-                    break;
+		// if(ch == delim)
+                //     break;
 
 		IFn macroFn = getMacro(ch);
 		if(macroFn != null)
@@ -1243,8 +1300,29 @@ public static class FunctionReader extends AFn{
 			unread(r, ch);
 
 			Object o = read(r, true, null, isRecursive);
-			if(o != r)
-                            a.add(o);
+                        if (o instanceof Symbol) {
+                            // System.out.println("INTERPRETED! " + interpreted);
+                            // Handle reserved symbols
+                            Symbol reservedSymbol = (Symbol) o;
+                            // System.out.println("THE SYMBOL!" + reservedSymbol.getClass().getName() + ": " + reservedSymbol.getNamespace() + "/" + reservedSymbol.getName());
+                            if (reservedSymbol.equals(Symbol.intern("end")))
+                                break;
+
+                            IFn reservedSymbolFn = getReservedSymbol(reservedSymbol);
+                            if(reservedSymbolFn != null) {
+                                // System.out.println("RESERVED! " + reservedSymbol.toString());
+				Object ret = reservedSymbolFn.invoke(r);
+				//no op macros return the reader
+				if(ret != r)
+                                    a.add(ret);
+                            } else {
+                                // System.out.println("WAS SYMBOL, but nothing special.");
+                                a.add(reservedSymbol);
+                            }
+                        } else {
+                            if(o != r)
+                                a.add(o);
+                        }
                     }
             }
 

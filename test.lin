@@ -3,3 +3,60 @@ function foo [a]
     +(a b c)
   end
 end
+
+function simple-if [num]
+  if pos?(num)
+    println("Branch 1")
+    println("It's positive!")
+  end
+end
+
+function medium-if [num]
+  if pos?(num)
+    println("Branch 1")
+    println("It's positive!")
+  else
+    println("Branch 2")
+    println("It's negative or zero!")
+  end
+end
+
+function complex-if [num]
+  if pos?(num)
+    println("Branch 1")
+    println("It's positive!")
+  elseif neg?(num)
+    println("Branch 2")
+    println("It's negative!")
+  else
+    println("Branch 3")
+    println("It's zero!")
+  end
+end
+
+function really-complex-if [num]
+  if pos?(num)
+    println("Branch 1")
+    println("It's positive!")
+    if >(num, 1000)
+      println("Branch 1a")
+      println("It's big!")
+    else
+      println("Branch 1b")
+      println("It's small!")
+    end
+  elseif neg?(num)
+    println("Branch 2")
+    println("It's negative!")
+    if <(num, -1000)
+      println("Branch 2a")
+      println("It's really small!")
+    else
+      println("Branch 2b")
+      println("It's just kinda small")
+    end
+  else
+    println("Branch 3")
+    println("It's zero!")
+  end
+end

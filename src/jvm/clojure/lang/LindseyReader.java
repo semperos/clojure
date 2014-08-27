@@ -39,6 +39,16 @@ import java.util.regex.Pattern;
 
 public class LindseyReader {
 
+    static final Symbol DEFN = Symbol.intern("defn");
+    static final Symbol FUNCTION = Symbol.intern("function"); // to remove
+    static final Symbol END = Symbol.intern("end");
+    static final Symbol LET = Symbol.intern("let");
+    static final Symbol DO = Symbol.intern("do");
+    static final Symbol IF = Symbol.intern("if");
+    static final Symbol ELSEIF = Symbol.intern("elseif");
+    static final Symbol ELSE = Symbol.intern("else");
+    static final Symbol EQUALS = Symbol.intern("=");
+
     static final Symbol QUOTE = Symbol.intern("quote");
     static final Symbol THE_VAR = Symbol.intern("var");
     //static Symbol SYNTAX_QUOTE = Symbol.intern(null, "syntax-quote");
@@ -111,10 +121,12 @@ public class LindseyReader {
 	dispatchMacros['<'] = new UnreadableReader();
 	dispatchMacros['_'] = new DiscardReader();
 
-        reservedSymbols.put(Symbol.intern("function"),
+        reservedSymbols.put(FUNCTION,
                             new FunctionReader());
-        reservedSymbols.put(Symbol.intern("let"),
+        reservedSymbols.put(LET,
                             new LetReader());
+        reservedSymbols.put(IF,
+                            new IfReader());
     }
 
     static boolean isWhitespace(int ch){
@@ -454,7 +466,6 @@ public class LindseyReader {
     }
 
     static private IFn getReservedSymbol(Symbol sym){
-        // System.out.println("IS IT RESERVED?" + sym.getClass().getName() + ": " + sym.getNamespace() + "/" + sym.getName());
         return (IFn) reservedSymbols.get(sym);
     }
 
@@ -1043,8 +1054,7 @@ public static class FunctionReader extends AFn {
                     line = ((LineNumberingPushbackReader) r).getLineNumber();
                     column = ((LineNumberingPushbackReader) r).getColumnNumber()-1;
                 }
-            // System.out.println("Woohoo! Function definition time!");
-            List list = readReservedForm(Symbol.intern("defn"), r, true);
+            List list = readReservedForm(DEFN, r, true);
             if(list.isEmpty())
                 return PersistentList.EMPTY;
             IObj s = (IObj) PersistentList.create(list);
@@ -1069,8 +1079,7 @@ public static class LetReader extends AFn {
                     line = ((LineNumberingPushbackReader) r).getLineNumber();
                     column = ((LineNumberingPushbackReader) r).getColumnNumber()-1;
                 }
-            // System.out.println("Woohoo! Function definition time!");
-            List list = readReservedForm(Symbol.intern("let"), r, true);
+            List list = readReservedForm(LET, r, true);
             Object bindingForm = list.get(1);
             if (!(bindingForm instanceof PersistentVector))
                 throw new IllegalArgumentException("The 'let' reserved word expects a vector of binding forms.");
@@ -1079,7 +1088,7 @@ public static class LetReader extends AFn {
                 throw new IllegalArgumentException("The 'let' reserved word requires bindings in the form [a = 1, b = 2]");
             ArrayList<Integer> indices = new ArrayList<Integer>();
             for(int i = 1; i < bindingFormList.size(); i += 3) {
-                if(!Symbol.intern("=").equals(bindingFormList.get(i)))
+                if(!EQUALS.equals(bindingFormList.get(i)))
                     throw new IllegalArgumentException("The 'let' reserved word requires bindings in the form [a = 1, b = 2]");
                 indices.add(i);
             }
@@ -1095,6 +1104,43 @@ public static class LetReader extends AFn {
                 return PersistentList.EMPTY;
             IObj s = (IObj) PersistentList.create(finalLetList);
             //		IObj s = (IObj) RT.seq(finalLetList);
+            if(line != -1)
+                {
+                    return s.withMeta(RT.map(RT.LINE_KEY, line, RT.COLUMN_KEY, column));
+                }
+            else
+                return s;
+	}
+
+    }
+
+public static class IfReader extends AFn {
+	public Object invoke(Object reader) {
+            PushbackReader r = (PushbackReader) reader;
+            int line = -1;
+            int column = -1;
+            if(r instanceof LineNumberingPushbackReader)
+                {
+                    line = ((LineNumberingPushbackReader) r).getLineNumber();
+                    column = ((LineNumberingPushbackReader) r).getColumnNumber()-1;
+                }
+            List forms = readReservedForm(IF, r, true);
+            List list = analyzeIf(forms);
+
+            // Support `if` with no else, comes back from analyzeIf
+            // as just the branch without the `if` and condition
+            if (!IF.equals(list.get(0))) {
+                List tmpList = new ArrayList();
+                tmpList.add(IF);
+                tmpList.add(forms.get(1));
+                tmpList.add(list);
+                list = tmpList;
+            }
+
+            if(list.isEmpty())
+                return PersistentList.EMPTY;
+            IObj s = (IObj) PersistentList.create(list);
+            //		IObj s = (IObj) RT.seq(list);
             if(line != -1)
                 {
                     return s.withMeta(RT.map(RT.LINE_KEY, line, RT.COLUMN_KEY, column));
@@ -1319,7 +1365,7 @@ public static class LetReader extends AFn {
                             // Handle reserved symbols
                             Symbol reservedSymbol = (Symbol) o;
                             // System.out.println("THE SYMBOL!" + reservedSymbol.getClass().getName() + ": " + reservedSymbol.getNamespace() + "/" + reservedSymbol.getName());
-                            if (reservedSymbol.equals(Symbol.intern("end")))
+                            if (reservedSymbol.equals(END))
                                 break;
 
                             IFn reservedSymbolFn = getReservedSymbol(reservedSymbol);
@@ -1342,6 +1388,47 @@ public static class LetReader extends AFn {
 
 
 	return a;
+    }
+
+    public static List analyzeIf(List forms) {
+        List finalForm = new ArrayList();
+        // Add initial `if` and first condition if present
+        Integer startIdx = null;
+        if (IF.equals(forms.get(0))) {
+            finalForm.add(IF);
+            finalForm.add(forms.get(1));
+            startIdx = 2;
+        } else {
+            startIdx = 0;
+        }
+        List doList = new ArrayList();
+        doList.add(DO);
+        for(int i = startIdx; i < forms.size(); i++) {
+            Object form = forms.get(i);
+            if (ELSE.equals(form)) {
+                // Add the branch preceding the `else`
+                finalForm.add(PersistentList.create(doList));
+                // Process the branch following the `else`
+                finalForm.add(PersistentList.create(analyzeIf(new ArrayList(forms.subList(i + 1, forms.size())))));
+                return finalForm;
+            } else if (ELSEIF.equals(form)) {
+                // Add the branch preceding the `else`
+                finalForm.add(PersistentList.create(doList));
+                // This now starts with the condition of the elseif
+                List subList = new ArrayList(forms.subList(i + 1, forms.size()));
+                // Add `if` and then recur
+                subList.add(0, IF);
+                finalForm.add(PersistentList.create(analyzeIf(subList)));
+                return finalForm;
+            } else if (i == forms.size() - 1) {
+                doList.add(form);
+                return doList;
+            } else {
+                // Works because we're using analyzeIf recursively
+                doList.add(form);
+            }
+        }
+        return finalForm;
     }
 
     public static class CtorReader extends AFn{

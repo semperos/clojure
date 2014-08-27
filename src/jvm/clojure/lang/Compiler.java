@@ -7122,7 +7122,7 @@ public static Object load(Reader rdr, String sourcePath, String sourceName) {
 
 	try
             {
-                if (RT.CURRENT_READER.deref() == ClojureReaders.LISP_READER) {
+                if (RT.CURRENT_READER.deref() == RT.lispReader) {
                     for(Object r = LispReader.read(pushbackReader, false, EOF, false); r != EOF;
                         r = LispReader.read(pushbackReader, false, EOF, false))
                         {
@@ -7300,7 +7300,7 @@ public static Object compile(Reader rdr, String sourcePath, String sourceName) t
 		                                            cv);
 		gen.visitCode();
 
-                if (RT.CURRENT_READER.deref() == ClojureReaders.LISP_READER) {
+                if (RT.CURRENT_READER.deref() == RT.lispReader) {
                     for(Object r = LispReader.read(pushbackReader, false, EOF, false); r != EOF;
                         r = LispReader.read(pushbackReader, false, EOF, false))
 			{

@@ -1,3 +1,10 @@
+;;
+;; Load by doing:
+;;
+;; (defn load-lindsey [f] (binding [*current-reader* :lindsey-reader] (load-file f)))
+;; (load-lindsey "base.lin")
+;;
+
 function foo [a]
   let [b = 24, c = 42]
     +(a b c)

@@ -178,8 +178,10 @@ static Object readTrueFalseUnknown(String s){
 
 static public final Namespace CLOJURE_NS = Namespace.findOrCreate(Symbol.intern("clojure.core"));
 //static final Namespace USER_NS = Namespace.findOrCreate(Symbol.intern("user"));
+final static public Keyword lispReader = Keyword.intern(null, "lisp-reader");
+final static public Keyword lindseyReader = Keyword.intern(null, "lindsey-reader");
 final static public Var CURRENT_READER =
-		Var.intern(CLOJURE_NS, Symbol.intern("*current-reader*"), ClojureReaders.LISP_READER).setDynamic();
+		Var.intern(CLOJURE_NS, Symbol.intern("*current-reader*"), lispReader).setDynamic();
 final static public Var OUT =
 		Var.intern(CLOJURE_NS, Symbol.intern("*out*"), new OutputStreamWriter(System.out)).setDynamic();
 final static public Var IN =
@@ -1781,12 +1783,12 @@ static public String printString(Object x){
 
 static public Object readString(String s){
         PushbackReader r = new PushbackReader(new StringReader(s));
-        if (RT.CURRENT_READER.deref() == ClojureReaders.LISP_READER) {
+        if (RT.CURRENT_READER.deref() == lispReader) {
             return LispReader.read(r, true, null, false);
-        } else if (RT.CURRENT_READER.deref() == ClojureReaders.LINDSEY_READER) {
+        } else if (RT.CURRENT_READER.deref() == lindseyReader) {
             return LindseyReader.read(r, true, null, false);
         } else {
-            throw new IllegalArgumentException("ClojureReader " + RT.CURRENT_READER.deref() + " is not defined.");
+            throw new IllegalArgumentException("Clojure reader " + RT.CURRENT_READER.deref() + " is not defined.");
         }
 }
 

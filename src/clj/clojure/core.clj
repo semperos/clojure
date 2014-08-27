@@ -3577,9 +3577,9 @@
   ([stream eof-error? eof-value]
      (read stream eof-error? eof-value false))
   ([stream eof-error? eof-value recursive?]
-     (read clojure.lang.ClojureReaders/LISP_READER stream eof-error? eof-value recursive?))
+     (read :lisp-reader stream eof-error? eof-value recursive?))
   ([rdr-name stream eof-error? eof-value recursive?]
-     (if (= rdr-name clojure.lang.ClojureReaders/LISP_READER)
+     (if (= rdr-name :lisp-reader)
        (. clojure.lang.LispReader (read stream (boolean eof-error?) eof-value recursive?))
        (. clojure.lang.LindseyReader (read stream (boolean eof-error?) eof-value recursive?)))))
 

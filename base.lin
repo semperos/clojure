@@ -5,20 +5,26 @@
 ;; (load-lindsey "base.lin")
 ;;
 
-function foo [a]
+function foo
+  "Simple function definition"
+  [a]
   let [b = 24, c = 42]
     +(a b c)
   end
 end
 
-function simple-if [num]
+function simple-if
+  "Single-branch if"
+  [num]
   if pos?(num)
     println("Branch 1")
     println("It's positive!")
   end
 end
 
-function medium-if [num]
+function medium-if
+  "If-else"
+  [num]
   if pos?(num)
     println("Branch 1")
     println("It's positive!")
@@ -28,7 +34,9 @@ function medium-if [num]
   end
 end
 
-function complex-if [num]
+function complex-if
+  "If and elseif and else"
+  [num]
   if pos?(num)
     println("Branch 1")
     println("It's positive!")
@@ -41,7 +49,9 @@ function complex-if [num]
   end
 end
 
-function really-complex-if [num]
+function really-complex-if
+  "Nested if's"
+  [num]
   if pos?(num)
     println("Branch 1")
     println("It's positive!")
@@ -65,5 +75,15 @@ function really-complex-if [num]
   else
     println("Branch 3")
     println("It's zero!")
+  end
+end
+
+function multi-arity
+  "Handle multiple arity correctly"
+  arity [x]
+    (* x 3)
+  end
+  arity [x y]
+    (* x y)
   end
 end

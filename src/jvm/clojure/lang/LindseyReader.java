@@ -41,6 +41,7 @@ public class LindseyReader {
 
     static final Symbol DEFN = Symbol.intern("defn");
     static final Symbol FUNCTION = Symbol.intern("function"); // to remove
+    static final Symbol ARITY = Symbol.intern("arity");
     static final Symbol END = Symbol.intern("end");
     static final Symbol LET = Symbol.intern("let");
     static final Symbol DO = Symbol.intern("do");
@@ -123,6 +124,8 @@ public class LindseyReader {
 
         reservedSymbols.put(FUNCTION,
                             new FunctionReader());
+        reservedSymbols.put(ARITY,
+                            new ArityReader());
         reservedSymbols.put(LET,
                             new LetReader());
         reservedSymbols.put(IF,
@@ -1069,6 +1072,31 @@ public static class FunctionReader extends AFn {
 
     }
 
+    public static class ArityReader extends AFn {
+	public Object invoke(Object reader) {
+            PushbackReader r = (PushbackReader) reader;
+            int line = -1;
+            int column = -1;
+            if(r instanceof LineNumberingPushbackReader)
+                {
+                    line = ((LineNumberingPushbackReader) r).getLineNumber();
+                    column = ((LineNumberingPushbackReader) r).getColumnNumber()-1;
+                }
+            List list = readReservedForm(null, r, true);
+            if(list.isEmpty())
+                return PersistentList.EMPTY;
+            IObj s = (IObj) PersistentList.create(list);
+            //		IObj s = (IObj) RT.seq(list);
+            if(line != -1)
+                {
+                    return s.withMeta(RT.map(RT.LINE_KEY, line, RT.COLUMN_KEY, column));
+                }
+            else
+                return s;
+	}
+
+    }
+
 public static class LetReader extends AFn {
 	public Object invoke(Object reader) {
             PushbackReader r = (PushbackReader) reader;
@@ -1327,7 +1355,8 @@ public static class IfReader extends AFn {
             ((LineNumberingPushbackReader) r).getLineNumber() : -1;
 
 	ArrayList a = new ArrayList();
-        a.add(clojureSym);
+        if (clojureSym != null)
+            a.add(clojureSym);
 
 	for(; ;)
             {

@@ -2,6 +2,7 @@
 ;; Load by doing:
 ;;
 ;; (defn load-lindsey [f] (binding [*current-reader* :lindsey-reader] (load-file f)))
+;; (defn read-lindsey [s] (binding [*current-reader* :lindsey-reader] (read-string s)))
 ;; (load-lindsey "base.lin")
 ;;
 

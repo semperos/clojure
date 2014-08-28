@@ -49,6 +49,7 @@ public class LindseyReader {
     static final Symbol ELSEIF = Symbol.intern("elseif");
     static final Symbol ELSE = Symbol.intern("else");
     static final Symbol EQUALS = Symbol.intern("=");
+    static final Symbol DOT = Symbol.intern(".");
 
     static final Symbol QUOTE = Symbol.intern("quote");
     static final Symbol THE_VAR = Symbol.intern("var");
@@ -256,7 +257,28 @@ public class LindseyReader {
                                     Object ret = listReader.invoke(r, (char) ch);
                                     ArrayList retArrayList = new ArrayList((PersistentList) ret);
                                     // Put symbol at the front of the list so it's invoked
-                                    retArrayList.add(0, reservedSymbol);
+                                    if (reservedSymbol.getNamespace() != null) {
+                                        retArrayList.add(0, reservedSymbol);
+                                    } else if (reservedSymbol.getName().contains(".")) {
+                                        String name = reservedSymbol.getName();
+                                        int idx = name.lastIndexOf(".");
+                                        if (idx != -1) {
+                                            // Write full (. foo bar args...) format
+                                            String object = name.substring(0,idx);
+                                            String method = name.substring(idx+1,name.length()); // skip the dot
+                                            List objCall = new ArrayList();
+                                            objCall.add(DOT);
+                                            objCall.add(Symbol.intern(object));
+                                            objCall.add(Symbol.intern(method));
+                                            objCall.addAll(new ArrayList(retArrayList));
+                                            retArrayList = (ArrayList) objCall;
+                                        } else {
+                                            retArrayList.add(0, reservedSymbol);
+                                        }
+                                    } else {
+                                        retArrayList.add(0, reservedSymbol);
+                                    }
+
                                     return PersistentList.create(retArrayList);
                                 } else {
                                     unread(r, ch);

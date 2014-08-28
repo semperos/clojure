@@ -88,3 +88,8 @@ function multi-arity
     (* x y)
   end
 end
+
+;; Support foo.bar() calls
+function method-call [s]
+  s.substring(0,3)
+end

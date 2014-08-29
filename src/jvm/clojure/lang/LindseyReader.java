@@ -42,21 +42,26 @@ public class LindseyReader {
     // Many of these are also in clojure.lang.Compiler,
     // but collecting them here for now to keep them in one place.
     static final Symbol END = Symbol.intern("end");
+    static final Symbol LET = Symbol.intern("let");
+    static final Symbol DO = Symbol.intern("do");
+    // Functions
     static final Symbol DEFN = Symbol.intern("defn");
     static final Symbol FUNCTION = Symbol.intern("function"); // to remove, maybe
     static final Symbol FUN = Symbol.intern("fun");
     static final Symbol ARITY = Symbol.intern("arity");
+    // Multi-methods
     static final Symbol MULTI = Symbol.intern("multi");
     static final Symbol DEFMULTI = Symbol.intern("defmulti");
     static final Symbol METHOD = Symbol.intern("method");
     static final Symbol DEFMETHOD = Symbol.intern("defmethod");
-    static final Symbol LET = Symbol.intern("let");
-    static final Symbol DO = Symbol.intern("do");
+    // Conditionals
     static final Symbol IF = Symbol.intern("if");
     static final Symbol ELSEIF = Symbol.intern("elseif");
     static final Symbol ELSE = Symbol.intern("else");
     static final Symbol EQUALS = Symbol.intern("=");
+    // Dot-form calls for methods
     static final Symbol DOT = Symbol.intern(".");
+    // Clojure protocols and records
     static final Symbol PROTOCOL = Symbol.intern("protocol");
     static final Symbol DEFPROTOCOL = Symbol.intern("defprotocol");
     static final Symbol PROTO_METHOD = Symbol.intern("proto-method");
@@ -64,6 +69,14 @@ public class LindseyReader {
     static final Symbol EXTENDS = Symbol.intern("extends");
     static final Symbol RECORD = Symbol.intern("record");
     static final Symbol DEFRECORD = Symbol.intern("defrecord");
+    // gen-class & gen-interface
+    static final Symbol JAVA_CLASS = Symbol.intern("java-class");
+    static final Symbol GEN_CLASS = Symbol.intern("gen-class");
+    static final Symbol JAVA_METHOD = Symbol.intern("java-method");
+    static final Symbol IMPLEMENTS = Symbol.intern("implements");
+    static final Symbol SUBCLASS_OF = Symbol.intern("subclass-of");
+    static final Symbol INTERFACE = Symbol.intern("interface");
+    static final Symbol GEN_INTERFACE = Symbol.intern("gen-interface");
 
     static final Symbol QUOTE = Symbol.intern("quote");
     static final Symbol THE_VAR = Symbol.intern("var");
@@ -137,8 +150,8 @@ public class LindseyReader {
 	dispatchMacros['<'] = new UnreadableReader();
 	dispatchMacros['_'] = new DiscardReader();
 
-        reservedSymbols.put(FUNCTION, new FunctionReader()); // defn's
-        reservedSymbols.put(FUN, new FunReader()); // anonymouse fn's
+        reservedSymbols.put(FUNCTION, new FunctionReader());
+        reservedSymbols.put(FUN, new FunReader());
         reservedSymbols.put(ARITY, new HeadlessReader());
         reservedSymbols.put(MULTI, new MultiReader());
         reservedSymbols.put(METHOD, new MethodReader());
@@ -149,6 +162,8 @@ public class LindseyReader {
         reservedSymbols.put(IMPL, new HeadlessReader());
         reservedSymbols.put(EXTENDS, new ExtendsReader());
         reservedSymbols.put(RECORD, new RecordReader());
+        reservedSymbols.put(JAVA_CLASS, new JavaClassReader());
+        reservedSymbols.put(JAVA_METHOD, new JavaMethodReader());
     }
 
     static boolean isWhitespace(int ch){
@@ -1383,6 +1398,59 @@ public static class RecordReader extends AFn {
 
     }
 
+    public static class JavaClassReader extends AFn {
+	public Object invoke(Object reader) {
+            PushbackReader r = (PushbackReader) reader;
+            int line = -1;
+            int column = -1;
+            if(r instanceof LineNumberingPushbackReader)
+                {
+                    line = ((LineNumberingPushbackReader) r).getLineNumber();
+                    column = ((LineNumberingPushbackReader) r).getColumnNumber()-1;
+                }
+            List forms = readReservedForm(GEN_CLASS, r, true);
+            List list = analyzeJavaClass(forms);
+            if(list.isEmpty())
+                return PersistentList.EMPTY;
+            IObj s = (IObj) PersistentList.create(list);
+            //		IObj s = (IObj) RT.seq(list);
+            if(line != -1)
+                {
+                    return s.withMeta(RT.map(RT.LINE_KEY, line, RT.COLUMN_KEY, column));
+                }
+            else
+                return s;
+	}
+
+    }
+
+public static class JavaMethodReader extends AFn {
+	public Object invoke(Object reader) {
+            PushbackReader r = (PushbackReader) reader;
+            int line = -1;
+            int column = -1;
+            if(r instanceof LineNumberingPushbackReader)
+                {
+                    line = ((LineNumberingPushbackReader) r).getLineNumber();
+                    column = ((LineNumberingPushbackReader) r).getColumnNumber()-1;
+                }
+            List forms = readReservedForm(DEFN, r, true);
+            List list = analyzeJavaMethod(forms);
+            if(list.isEmpty())
+                return PersistentList.EMPTY;
+            IObj s = (IObj) PersistentList.create(list);
+            System.out.println("Java Method: " + s);
+            //		IObj s = (IObj) RT.seq(list);
+            if(line != -1)
+                {
+                    return s.withMeta(RT.map(RT.LINE_KEY, line, RT.COLUMN_KEY, column));
+                }
+            else
+                return s;
+	}
+
+    }
+
     /*
       static class CtorReader extends AFn{
       static final Symbol cls = Symbol.intern("class");
@@ -1683,6 +1751,109 @@ public static class RecordReader extends AFn {
                 finalForm.add(form);
             }
         }
+        return finalForm;
+    }
+
+    /*
+     * The java-class form sets up a gen-class as well as
+     * the methods that make up the implementation.
+     *
+     * Clojure's gen-class is a single form that consists
+     * only of options that configure the generated class.
+     * It expects to find the things it needs in the current ns or
+     * in the :impl-ns that can be specified.
+     *
+     * The java-class form does things a little differently,
+     * by containing within itself all the methods that belong
+     * to the class being implemented. The resulting gen-class is
+     * created by analyzing the various parts of java-class and
+     * the methods inside it, and then the methods (functions)
+     * are put after the Clojure gen-class form per usual.
+     */
+    public static List analyzeJavaClass(List forms) {
+        List finalForm = new ArrayList();
+        // This method must return a single form, so wrap the
+        // (gen-class ...) and related functions in a top-level (do ...)
+        finalForm.add(DO);
+        // Now we'll build the gen-class form
+        List genClassForm = new ArrayList();
+        // First form is gen-class added by the readReservedForm
+        // call that gets passed to this method
+        genClassForm.add(forms.get(0));
+        // Second form is the name of class to be generated
+        genClassForm.add(Keyword.intern(null, "name"));
+        genClassForm.add(forms.get(1));
+        // Now handle optional arguments to gen-class
+        Integer idx = 2;
+        // BEGIN subclass-of
+        if (SUBCLASS_OF.equals(forms.get(idx))) {
+            genClassForm.add(Keyword.intern(null, "extends"));
+            genClassForm.add(forms.get(idx + 1));
+            idx += 2;
+        }
+        // END sublcass-of
+        // BEGIN implements
+        if (IMPLEMENTS.equals(forms.get(idx))) {
+            genClassForm.add(Keyword.intern(null, "implements"));
+            genClassForm.add(forms.get(idx + 1));
+            idx += 2;
+        }
+        // END implements
+        // TODO Support the other options to gen-class
+
+        // Now handle method definitions
+        for(int i = idx; i < forms.size(); i++) {
+
+        }
+
+        finalForm.add(PersistentList.create(genClassForm));
+        return finalForm;
+    }
+
+public static List analyzeJavaMethod(List forms) {
+        List finalForm = new ArrayList();
+        // First form is `defn` per readReservedForm invocation
+        finalForm.add(forms.get(0));
+        // Next to support two use-cases:
+        // 1. Map of attrs, then name, then args
+        // 2. Return type, then name, then args
+        Object attrsOrReturnType = forms.get(1);
+        IPersistentMap attrs = null;
+        if (attrsOrReturnType instanceof IPersistentMap) {
+            // Attrs
+            attrs = (IPersistentMap) attrsOrReturnType;
+        } else {
+            // Return type, add in as attr map with that
+            // as single entry.
+            attrs = PersistentHashMap
+                .EMPTY
+                .assoc(Keyword.intern(null, "return"), attrsOrReturnType);
+        }
+        // When analyzing a whole gen-class form, we'll pluck out
+        // these attr maps and use them to inform the gen-class form itself.
+
+        // Then comes the name
+        Symbol methodName = (Symbol) forms.get(2);
+
+        // Then comes the params, which need to be
+        // in pairs of `^Typehint arg` so we can pull out
+        // the type hints and add them to gen-class if this method
+        // is marked as public.
+        PersistentVector args = (PersistentVector) forms.get(3);
+        List signature = new ArrayList();
+        for (int i = 0; i < args.size(); i++) {
+            Symbol sym = (Symbol) args.nth(i);
+
+            System.out.println("WHOLLY META! " + sym.meta());
+            signature.add(sym);
+        }
+        // Add the signature to the attrs to be plucked again later
+        attrs = attrs.assoc(Keyword.intern(null, "signature"), PersistentVector.create(signature));
+
+        // Add the methodName and attach the metadata of our attrs to it
+        finalForm.add(methodName.withMeta(attrs));
+        finalForm.add(args);
+        finalForm.addAll(new ArrayList(forms.subList(4,forms.size())));
         return finalForm;
     }
 

@@ -64,6 +64,7 @@ Currently the Lindsey reader can:
  * Transform `function ... end` forms into `(defn ...)` forms
  * Transform `let [a = 1, b =2] ... end` forms into `(let [a 1 b 2] ...)` forms
  * Function invocation as `println(a, b, c)`
+ * Conditional `if...elseif...else...end` implemented
 
 Todo:
 
@@ -72,7 +73,8 @@ Todo:
      * `macro ... end` &raquo; `defmacro`
      * `protocol ... end` &raquo; `defprotocol`
      * `record ... end` &raquo; `defrecord`
-     * Booleans (TBD how if, cond, case, etc. will work)
+     * Conditionals (TBD how cond, case, etc. will work)
+     * multi-methods
  * Redesigned `gen-class` and `gen-interface`, thoughts:
      * `class <name> <opts> ... end` &raquo; `gen-class`
      * `interface ... end` &raquo; `gen-interface`

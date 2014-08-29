@@ -89,12 +89,16 @@ function multi-arity
   end
 end
 
-;; Support foo.bar() calls
-function method-call [s]
+function method-call
+  "Instance method call example"
+  [s]
   s.substring(0,3)
 end
 
-;; Static method call
-function random-uuid []
+function random-uuid
+  "A static method call to UUID.randomUUID()"
+  []
   java.util.UUID/randomUUID()
 end
+
+record Employee [name title salary] end

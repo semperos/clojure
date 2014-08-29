@@ -50,6 +50,8 @@ public class LindseyReader {
     static final Symbol ELSE = Symbol.intern("else");
     static final Symbol EQUALS = Symbol.intern("=");
     static final Symbol DOT = Symbol.intern(".");
+    static final Symbol RECORD = Symbol.intern("record");
+    static final Symbol DEFRECORD = Symbol.intern("defrecord");
 
     static final Symbol QUOTE = Symbol.intern("quote");
     static final Symbol THE_VAR = Symbol.intern("var");
@@ -131,6 +133,8 @@ public class LindseyReader {
                             new LetReader());
         reservedSymbols.put(IF,
                             new IfReader());
+        reservedSymbols.put(RECORD,
+                            new RecordReader());
     }
 
     static boolean isWhitespace(int ch){
@@ -1196,6 +1200,31 @@ public static class IfReader extends AFn {
                 list = tmpList;
             }
 
+            if(list.isEmpty())
+                return PersistentList.EMPTY;
+            IObj s = (IObj) PersistentList.create(list);
+            //		IObj s = (IObj) RT.seq(list);
+            if(line != -1)
+                {
+                    return s.withMeta(RT.map(RT.LINE_KEY, line, RT.COLUMN_KEY, column));
+                }
+            else
+                return s;
+	}
+
+    }
+
+public static class RecordReader extends AFn {
+	public Object invoke(Object reader) {
+            PushbackReader r = (PushbackReader) reader;
+            int line = -1;
+            int column = -1;
+            if(r instanceof LineNumberingPushbackReader)
+                {
+                    line = ((LineNumberingPushbackReader) r).getLineNumber();
+                    column = ((LineNumberingPushbackReader) r).getColumnNumber()-1;
+                }
+            List list = readReservedForm(DEFRECORD, r, true);
             if(list.isEmpty())
                 return PersistentList.EMPTY;
             IObj s = (IObj) PersistentList.create(list);

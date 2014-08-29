@@ -102,3 +102,9 @@ function random-uuid
 end
 
 record Employee [name title salary] end
+
+protocol Sellable end
+
+record Product [a b]
+  extends Sellable end
+end

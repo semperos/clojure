@@ -50,6 +50,9 @@ public class LindseyReader {
     static final Symbol ELSE = Symbol.intern("else");
     static final Symbol EQUALS = Symbol.intern("=");
     static final Symbol DOT = Symbol.intern(".");
+    static final Symbol PROTOCOL = Symbol.intern("protocol");
+    static final Symbol DEFPROTOCOL = Symbol.intern("defprotocol");
+    static final Symbol EXTENDS = Symbol.intern("extends");
     static final Symbol RECORD = Symbol.intern("record");
     static final Symbol DEFRECORD = Symbol.intern("defrecord");
 
@@ -125,16 +128,13 @@ public class LindseyReader {
 	dispatchMacros['<'] = new UnreadableReader();
 	dispatchMacros['_'] = new DiscardReader();
 
-        reservedSymbols.put(FUNCTION,
-                            new FunctionReader());
-        reservedSymbols.put(ARITY,
-                            new ArityReader());
-        reservedSymbols.put(LET,
-                            new LetReader());
-        reservedSymbols.put(IF,
-                            new IfReader());
-        reservedSymbols.put(RECORD,
-                            new RecordReader());
+        reservedSymbols.put(FUNCTION, new FunctionReader());
+        reservedSymbols.put(ARITY, new ArityReader());
+        reservedSymbols.put(LET, new LetReader());
+        reservedSymbols.put(IF, new IfReader());
+        reservedSymbols.put(PROTOCOL, new ProtocolReader());
+        reservedSymbols.put(EXTENDS, new ExtendsReader());
+        reservedSymbols.put(RECORD, new RecordReader());
     }
 
     static boolean isWhitespace(int ch){
@@ -1214,6 +1214,56 @@ public static class IfReader extends AFn {
 
     }
 
+public static class ProtocolReader extends AFn {
+	public Object invoke(Object reader) {
+            PushbackReader r = (PushbackReader) reader;
+            int line = -1;
+            int column = -1;
+            if(r instanceof LineNumberingPushbackReader)
+                {
+                    line = ((LineNumberingPushbackReader) r).getLineNumber();
+                    column = ((LineNumberingPushbackReader) r).getColumnNumber()-1;
+                }
+            List list = readReservedForm(DEFPROTOCOL, r, true);
+            if(list.isEmpty())
+                return PersistentList.EMPTY;
+            IObj s = (IObj) PersistentList.create(list);
+            //		IObj s = (IObj) RT.seq(list);
+            if(line != -1)
+                {
+                    return s.withMeta(RT.map(RT.LINE_KEY, line, RT.COLUMN_KEY, column));
+                }
+            else
+                return s;
+	}
+
+    }
+
+    public static class ExtendsReader extends AFn {
+	public Object invoke(Object reader) {
+            PushbackReader r = (PushbackReader) reader;
+            int line = -1;
+            int column = -1;
+            if(r instanceof LineNumberingPushbackReader)
+                {
+                    line = ((LineNumberingPushbackReader) r).getLineNumber();
+                    column = ((LineNumberingPushbackReader) r).getColumnNumber()-1;
+                }
+            List list = readReservedForm(EXTENDS, r, true);
+            if(list.isEmpty())
+                return PersistentList.EMPTY;
+            IObj s = (IObj) PersistentList.create(list);
+            //		IObj s = (IObj) RT.seq(list);
+            if(line != -1)
+                {
+                    return s.withMeta(RT.map(RT.LINE_KEY, line, RT.COLUMN_KEY, column));
+                }
+            else
+                return s;
+	}
+
+    }
+
 public static class RecordReader extends AFn {
 	public Object invoke(Object reader) {
             PushbackReader r = (PushbackReader) reader;
@@ -1224,10 +1274,12 @@ public static class RecordReader extends AFn {
                     line = ((LineNumberingPushbackReader) r).getLineNumber();
                     column = ((LineNumberingPushbackReader) r).getColumnNumber()-1;
                 }
-            List list = readReservedForm(DEFRECORD, r, true);
+            List forms = readReservedForm(DEFRECORD, r, true);
+            List list = analyzeRecord(forms);
             if(list.isEmpty())
                 return PersistentList.EMPTY;
             IObj s = (IObj) PersistentList.create(list);
+            System.out.println("RECORD DEF IS : " + s);
             //		IObj s = (IObj) RT.seq(list);
             if(line != -1)
                 {
@@ -1515,6 +1567,28 @@ public static class RecordReader extends AFn {
             } else {
                 // Works because we're using analyzeIf recursively
                 doList.add(form);
+            }
+        }
+        return finalForm;
+    }
+
+    public static List analyzeRecord(List forms) {
+        // Splice out extends...end forms
+        List finalForm = new ArrayList();
+        for(int i = 0; i < forms.size(); i++) {
+            Object form = forms.get(i);
+            if (form instanceof PersistentList) {
+                PersistentList formList = (PersistentList) form;
+                Object fst = formList.first();
+                if (EXTENDS.equals(fst)) {
+                    // Splice out contents directly into final form
+                    for(ISeq s = formList.next(); s != null; s = s.next())
+                        finalForm.add(s.first());
+                } else {
+                    finalForm.add(form);
+                }
+            } else {
+                finalForm.add(form);
             }
         }
         return finalForm;

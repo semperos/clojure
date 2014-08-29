@@ -39,10 +39,17 @@ import java.util.regex.Pattern;
 
 public class LindseyReader {
 
-    static final Symbol DEFN = Symbol.intern("defn");
-    static final Symbol FUNCTION = Symbol.intern("function"); // to remove
-    static final Symbol ARITY = Symbol.intern("arity");
+    // Many of these are also in clojure.lang.Compiler,
+    // but collecting them here for now to keep them in one place.
     static final Symbol END = Symbol.intern("end");
+    static final Symbol DEFN = Symbol.intern("defn");
+    static final Symbol FUNCTION = Symbol.intern("function"); // to remove, maybe
+    static final Symbol FUN = Symbol.intern("fun");
+    static final Symbol ARITY = Symbol.intern("arity");
+    static final Symbol MULTI = Symbol.intern("multi");
+    static final Symbol DEFMULTI = Symbol.intern("defmulti");
+    static final Symbol METHOD = Symbol.intern("method");
+    static final Symbol DEFMETHOD = Symbol.intern("defmethod");
     static final Symbol LET = Symbol.intern("let");
     static final Symbol DO = Symbol.intern("do");
     static final Symbol IF = Symbol.intern("if");
@@ -130,8 +137,11 @@ public class LindseyReader {
 	dispatchMacros['<'] = new UnreadableReader();
 	dispatchMacros['_'] = new DiscardReader();
 
-        reservedSymbols.put(FUNCTION, new FunctionReader());
+        reservedSymbols.put(FUNCTION, new FunctionReader()); // defn's
+        reservedSymbols.put(FUN, new FunReader()); // anonymouse fn's
         reservedSymbols.put(ARITY, new HeadlessReader());
+        reservedSymbols.put(MULTI, new MultiReader());
+        reservedSymbols.put(METHOD, new MethodReader());
         reservedSymbols.put(LET, new LetReader());
         reservedSymbols.put(IF, new IfReader());
         reservedSymbols.put(PROTOCOL, new ProtocolReader());
@@ -1086,7 +1096,7 @@ public class LindseyReader {
 
     }
 
-public static class FunctionReader extends AFn {
+    public static class FunctionReader extends AFn {
 	public Object invoke(Object reader) {
             PushbackReader r = (PushbackReader) reader;
             int line = -1;
@@ -1100,6 +1110,82 @@ public static class FunctionReader extends AFn {
             if(list.isEmpty())
                 return PersistentList.EMPTY;
             IObj s = (IObj) PersistentList.create(list);
+            //		IObj s = (IObj) RT.seq(list);
+            if(line != -1)
+                {
+                    return s.withMeta(RT.map(RT.LINE_KEY, line, RT.COLUMN_KEY, column));
+                }
+            else
+                return s;
+	}
+
+    }
+
+    public static class FunReader extends AFn {
+	public Object invoke(Object reader) {
+            PushbackReader r = (PushbackReader) reader;
+            int line = -1;
+            int column = -1;
+            if(r instanceof LineNumberingPushbackReader)
+                {
+                    line = ((LineNumberingPushbackReader) r).getLineNumber();
+                    column = ((LineNumberingPushbackReader) r).getColumnNumber()-1;
+                }
+            List list = readReservedForm(Compiler.FN, r, true);
+            if(list.isEmpty())
+                return PersistentList.EMPTY;
+            IObj s = (IObj) PersistentList.create(list);
+            //		IObj s = (IObj) RT.seq(list);
+            if(line != -1)
+                {
+                    return s.withMeta(RT.map(RT.LINE_KEY, line, RT.COLUMN_KEY, column));
+                }
+            else
+                return s;
+	}
+
+    }
+
+    public static class MultiReader extends AFn {
+	public Object invoke(Object reader) {
+            PushbackReader r = (PushbackReader) reader;
+            int line = -1;
+            int column = -1;
+            if(r instanceof LineNumberingPushbackReader)
+                {
+                    line = ((LineNumberingPushbackReader) r).getLineNumber();
+                    column = ((LineNumberingPushbackReader) r).getColumnNumber()-1;
+                }
+            List list = readReservedForm(DEFMULTI, r, true);
+            if(list.isEmpty())
+                return PersistentList.EMPTY;
+            IObj s = (IObj) PersistentList.create(list);
+            //		IObj s = (IObj) RT.seq(list);
+            if(line != -1)
+                {
+                    return s.withMeta(RT.map(RT.LINE_KEY, line, RT.COLUMN_KEY, column));
+                }
+            else
+                return s;
+	}
+
+    }
+
+    public static class MethodReader extends AFn {
+	public Object invoke(Object reader) {
+            PushbackReader r = (PushbackReader) reader;
+            int line = -1;
+            int column = -1;
+            if(r instanceof LineNumberingPushbackReader)
+                {
+                    line = ((LineNumberingPushbackReader) r).getLineNumber();
+                    column = ((LineNumberingPushbackReader) r).getColumnNumber()-1;
+                }
+            List list = readReservedForm(DEFMETHOD, r, true);
+            if(list.isEmpty())
+                return PersistentList.EMPTY;
+            IObj s = (IObj) PersistentList.create(list);
+            System.out.println("Method: " + s);
             //		IObj s = (IObj) RT.seq(list);
             if(line != -1)
                 {

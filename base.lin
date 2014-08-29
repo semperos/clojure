@@ -117,3 +117,14 @@ record Product [a b]
     end
   end
 end
+
+multi validate juxt(:lang, :type) end
+
+method validate ["English" "greeting"]
+  [m]
+  let [phrase = get(m, :phrase),
+       lc = clojure.string/lower-case
+       greetings = #{"hello" "good morning" "good afternoon" "good evening"}]
+    greetings(lc(phrase))
+  end
+end

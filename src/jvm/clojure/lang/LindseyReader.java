@@ -253,13 +253,21 @@ public class LindseyReader {
                                 // Handle invocation
                                 ch = read1(r);
                                 if (ch == '(') {
+                                    // System.out.println("Handle invocation!");
                                     IFn listReader = getMacro(ch);
                                     Object ret = listReader.invoke(r, (char) ch);
-                                    ArrayList retArrayList = new ArrayList((PersistentList) ret);
+                                    ArrayList retArrayList = null;
+                                    if (ret == PersistentList.EMPTY) {
+                                        retArrayList = new ArrayList();
+                                    } else {
+                                        retArrayList = new ArrayList((PersistentList) ret);
+                                    }
                                     // Put symbol at the front of the list so it's invoked
                                     if (reservedSymbol.getNamespace() != null) {
+                                        // System.out.println("Symbol with namespace: " + reservedSymbol.getNamespace() + "/" + reservedSymbol.getName());
                                         retArrayList.add(0, reservedSymbol);
                                     } else if (reservedSymbol.getName().contains(".")) {
+                                        // System.out.println("Symbol with dot : " + reservedSymbol);
                                         String name = reservedSymbol.getName();
                                         int idx = name.lastIndexOf(".");
                                         if (idx != -1) {
@@ -276,6 +284,7 @@ public class LindseyReader {
                                             retArrayList.add(0, reservedSymbol);
                                         }
                                     } else {
+                                        // System.out.println("Symbol without dot: " + reservedSymbol);
                                         retArrayList.add(0, reservedSymbol);
                                     }
 

@@ -93,3 +93,8 @@ end
 function method-call [s]
   s.substring(0,3)
 end
+
+;; Static method call
+function random-uuid []
+  java.util.UUID/randomUUID()
+end

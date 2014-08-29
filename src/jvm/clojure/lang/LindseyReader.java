@@ -52,6 +52,8 @@ public class LindseyReader {
     static final Symbol DOT = Symbol.intern(".");
     static final Symbol PROTOCOL = Symbol.intern("protocol");
     static final Symbol DEFPROTOCOL = Symbol.intern("defprotocol");
+    static final Symbol PROTO_METHOD = Symbol.intern("proto-method");
+    static final Symbol IMPL = Symbol.intern("impl");
     static final Symbol EXTENDS = Symbol.intern("extends");
     static final Symbol RECORD = Symbol.intern("record");
     static final Symbol DEFRECORD = Symbol.intern("defrecord");
@@ -129,10 +131,12 @@ public class LindseyReader {
 	dispatchMacros['_'] = new DiscardReader();
 
         reservedSymbols.put(FUNCTION, new FunctionReader());
-        reservedSymbols.put(ARITY, new ArityReader());
+        reservedSymbols.put(ARITY, new HeadlessReader());
         reservedSymbols.put(LET, new LetReader());
         reservedSymbols.put(IF, new IfReader());
         reservedSymbols.put(PROTOCOL, new ProtocolReader());
+        reservedSymbols.put(PROTO_METHOD, new HeadlessReader());
+        reservedSymbols.put(IMPL, new HeadlessReader());
         reservedSymbols.put(EXTENDS, new ExtendsReader());
         reservedSymbols.put(RECORD, new RecordReader());
     }
@@ -1107,7 +1111,7 @@ public static class FunctionReader extends AFn {
 
     }
 
-    public static class ArityReader extends AFn {
+    public static class HeadlessReader extends AFn {
 	public Object invoke(Object reader) {
             PushbackReader r = (PushbackReader) reader;
             int line = -1;
@@ -1118,6 +1122,7 @@ public static class FunctionReader extends AFn {
                     column = ((LineNumberingPushbackReader) r).getColumnNumber()-1;
                 }
             List list = readReservedForm(null, r, true);
+            System.out.println("HEADLESS: " + list);
             if(list.isEmpty())
                 return PersistentList.EMPTY;
             IObj s = (IObj) PersistentList.create(list);
@@ -1228,6 +1233,7 @@ public static class ProtocolReader extends AFn {
             if(list.isEmpty())
                 return PersistentList.EMPTY;
             IObj s = (IObj) PersistentList.create(list);
+            // System.out.println("Protocol: " + s);
             //		IObj s = (IObj) RT.seq(list);
             if(line != -1)
                 {
@@ -1279,7 +1285,7 @@ public static class RecordReader extends AFn {
             if(list.isEmpty())
                 return PersistentList.EMPTY;
             IObj s = (IObj) PersistentList.create(list);
-            System.out.println("RECORD DEF IS : " + s);
+            // System.out.println("Record: " + s);
             //		IObj s = (IObj) RT.seq(list);
             if(line != -1)
                 {

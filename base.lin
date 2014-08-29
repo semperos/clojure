@@ -103,8 +103,17 @@ end
 
 record Employee [name title salary] end
 
-protocol Sellable end
+;; (defprotocol Sellable
+;;   (calculate-tax [this base rate]))
+protocol Sellable
+  proto-method calculate-tax [this base rate] end
+end
 
 record Product [a b]
-  extends Sellable end
+  extends Sellable
+    impl calculate-tax [this base rate]
+      println("Calculate taxes!")
+      *(base, rate)
+    end
+  end
 end

@@ -1,3 +1,4 @@
+(ns lindsey.base)
 ;;
 ;; Load by doing:
 ;;

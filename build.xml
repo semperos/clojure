@@ -11,6 +11,7 @@
   <property name="jtestsrc" location="${test}/java"/>
   <property name="cljsrc" location="${src}/clj"/>
   <property name="cljscript" location="${src}/script"/>
+  <property name="linsrc" location="${src}/lin"/>
   <property name="test-script" location="${cljscript}/run_tests.clj"/>
   <property name="compile-script" location="${cljscript}/bootstrap_compile.clj"/>
   <property name="target" location="target"/>
@@ -26,6 +27,8 @@
 
   <property name="clojure_jar" location="clojure-${clojure.version.label}.jar"/>
   <property name="clojure_noversion_jar" location="clojure.jar"/>
+  <property name="lindsey_jar" location="lindsey-${clojure.version.label}.jar"/>
+  <property name="lindsey_noversion_jar" location="lindsey.jar"/>
 
   <target name="init" depends="clean">
     <tstamp/>
@@ -79,7 +82,21 @@
     </java>
   </target>
 
-  <target name="compile-tests" 
+  <target name="compile-lindsey" depends="compile-clojure"
+          description="Compile Lindsey sources.">
+    <java classname="clojure.lang.Compile"
+          classpath="${maven.compile.classpath}:${build}:${cljsrc}:${linsrc}"
+          failonerror="true"
+          fork="true">
+      <sysproperty key="clojure.compile.path" value="${build}"/>
+      <sysproperty key="java.awt.headless" value="true"/>
+      <sysproperty key="clojure.reader.current-reader" value=":lindsey-reader"/>
+      <arg value="lindsey.base"/>
+      <arg value="lindsey.interop"/>
+    </java>
+  </target>
+
+  <target name="compile-tests"
           description="Compile the subset of tests that require compilation."
           unless="maven.test.skip">
     <mkdir dir="${test-classes}"/>
@@ -130,6 +147,27 @@
       </manifest>
     </jar>
     <copy file="${clojure_jar}" tofile="${clojure_noversion_jar}"/>
+  </target>
+
+  <target name="build-lindsey"
+          description="Build Lindsey (compilation only, no tests)."
+          depends="compile-java, compile-clojure, compile-lindsey"/>
+
+  <target name="jar-lindsey" depends="build-lindsey"
+          description="Create Lindsey jar file.">
+    <jar jarfile="${lindsey_jar}" basedir="${build}">
+      <fileset dir="${cljsrc}">
+        <include name="**/*.clj"/>
+      </fileset>
+      <fileset dir="${linsrc}">
+        <include name="**/*.lin"/>
+      </fileset>
+      <manifest>
+        <attribute name="Main-Class" value="clojure.main"/>
+        <attribute name="Class-Path" value="."/>
+      </manifest>
+    </jar>
+    <copy file="${lindsey_jar}" tofile="${lindsey_noversion_jar}"/>
   </target>
 
   <target name="javadoc"

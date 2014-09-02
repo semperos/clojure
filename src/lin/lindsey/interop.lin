@@ -1,18 +1,34 @@
-java-class MyClass
-  java-method {:access :public,
-               :return void
-               :static true}
-    main [& args]
-      println("Wowza!")
+(ns lindsey.interop)
+
+java-class SimpleClass
+  java-method main [& args]
+    println("Embedded -main for SimpleClass")
   end
 
-  java-method {:access :public,
-               :return String,
-               :static true}
-    addStr [^String s]
-      str(s, " wowza sauce!")
+  java-method ^String foo []
+    "wowza!"
   end
 end
+
+;; function java-main [& args]
+;;   println("Main for SimpleClass")
+;; end
+
+;; java-class MyClass
+;;   java-method ^{:access :public,
+;;                 :return void
+;;                 :static true}
+;;     main [& args]
+;;       println("Wowza!")
+;;   end
+
+;;   java-method ^{:access :public,
+;;                 :return String,
+;;                 :static true}
+;;     addStr [^String s]
+;;       str(s, " wowza sauce!")
+;;   end
+;; end
 
 ;; State will always be accessed as `.state`
 ;; and the value of constructors is the state.

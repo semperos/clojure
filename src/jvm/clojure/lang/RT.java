@@ -417,7 +417,14 @@ static public void load(String scriptbase) throws IOException, ClassNotFoundExce
 
 static public void load(String scriptbase, boolean failIfNotFound) throws IOException, ClassNotFoundException{
 	String classfile = scriptbase + LOADER_SUFFIX + ".class";
-	String cljfile = scriptbase + ".clj";
+	String cljfile = null;
+        if (Keyword.intern(null, "lisp-reader").equals(RT.CURRENT_READER.deref())) {
+            cljfile = scriptbase + ".clj";
+        } else if (Keyword.intern(null, "lindsey-reader").equals(RT.CURRENT_READER.deref())) {
+            cljfile = scriptbase + ".lin";
+        } else {
+            throw new IllegalStateException("Reader " + RT.CURRENT_READER.deref() + " is not supported.");
+        }
 	URL classURL = getResource(baseLoader(),classfile);
 	URL cljURL = getResource(baseLoader(), cljfile);
 	boolean loaded = false;

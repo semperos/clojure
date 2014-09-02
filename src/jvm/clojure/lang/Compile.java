@@ -28,12 +28,14 @@ public class Compile{
 private static final String PATH_PROP = "clojure.compile.path";
 private static final String REFLECTION_WARNING_PROP = "clojure.compile.warn-on-reflection";
 private static final String UNCHECKED_MATH_PROP = "clojure.compile.unchecked-math";
+private static final String CURRENT_READER_PROP = "clojure.reader.current-reader";
 
 private static final Var compile_path = RT.var("clojure.core", "*compile-path*");
 private static final Var compile = RT.var("clojure.core", "compile");
 private static final Var warn_on_reflection = RT.var("clojure.core", "*warn-on-reflection*");
 private static final Var unchecked_math = RT.var("clojure.core", "*unchecked-math*");
 private static final Var compiler_options = RT.var("clojure.core", "*compiler-options*");
+private static final Var current_reader = RT.var("clojure.core", "*current-reader*");
 
 public static void main(String[] args) throws IOException{
 
@@ -41,6 +43,10 @@ public static void main(String[] args) throws IOException{
 	PrintWriter err = RT.errPrintWriter();
 	String path = System.getProperty(PATH_PROP);
 	int count = args.length;
+        Keyword currentReader = (Keyword) RT.CURRENT_READER.deref();
+        Object currentReaderValue = System.getProperty(CURRENT_READER_PROP);
+        if (currentReaderValue != null)
+            currentReader = (Keyword) RT.readString((String) currentReaderValue);
 
 	if(path == null)
 		{
@@ -72,7 +78,8 @@ public static void main(String[] args) throws IOException{
                Var.pushThreadBindings(RT.map(compile_path, path,
                        warn_on_reflection, warnOnReflection,
                        unchecked_math, uncheckedMath,
-                       compiler_options, compilerOptions));
+                       compiler_options, compilerOptions,
+                       current_reader, currentReader));
 
 		for(String lib : args)
         {

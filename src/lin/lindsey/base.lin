@@ -11,7 +11,7 @@ function foo
   "Simple function definition"
   [a]
   let [b = 24, c = 42]
-    +(a b c)
+    +(a, b, c)
   end
 end
 

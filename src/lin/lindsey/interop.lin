@@ -12,6 +12,12 @@ java-class SimpleClass
   java-method ^Long multiply [^Long x]
     *(x, 42)
   end
+
+  java-method ^{:static true}
+    staticCharge []
+      "Static charge complete."
+  end
+
 end
 
 ;; function java-main [& args]

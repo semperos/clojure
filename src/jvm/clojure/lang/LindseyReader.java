@@ -77,10 +77,19 @@ public class LindseyReader {
     static final Symbol SUBCLASS_OF = Symbol.intern("subclass-of");
     static final Symbol INTERFACE = Symbol.intern("interface");
     static final Symbol GEN_INTERFACE = Symbol.intern("gen-interface");
+    static final Keyword NAME_KEY = Keyword.intern(null, "name");
+    static final Keyword PREFIX_KEY = Keyword.intern(null, "prefix");
+    static final Keyword EXTENDS_KEY = Keyword.intern(null, "extends");
+    static final Keyword IMPLEMENTS_KEY = Keyword.intern(null, "implements");
     static final String JAVA_METHOD_PREFIX = "java-";
     static final Symbol JAVA_MAIN_METHOD = Symbol.intern(JAVA_METHOD_PREFIX + "main");
+    static final Symbol THIS_ARG = Symbol.intern("this");
+    static final Keyword MAIN_KEY = Keyword.intern(null, "main");
+    static final Keyword METHODS_KEY = Keyword.intern(null, "methods");
     static final Keyword ACCESS_KEY = Keyword.intern(null, "access");
     static final Keyword SIGNATURE_KEY = Keyword.intern(null, "signature");
+    static final Symbol OBJECT_SYM = Symbol.intern("Object");
+    static final Keyword STATIC_KEY = Keyword.intern(null, "static");
     static final Keyword PUBLIC = Keyword.intern(null, "public");
     static final Keyword PRIVATE = Keyword.intern(null, "private");
 
@@ -1445,7 +1454,7 @@ public static class JavaMethodReader extends AFn {
             if(list.isEmpty())
                 return PersistentList.EMPTY;
             IObj s = (IObj) PersistentList.create(list);
-            System.out.println("Java Method: " + s);
+            // System.out.println("Java Method: " + s);
             //		IObj s = (IObj) RT.seq(list);
             if(line != -1)
                 {
@@ -1796,10 +1805,10 @@ public static class JavaMethodReader extends AFn {
             Namespace ns = (Namespace) RT.CURRENT_NS.deref();
             genClassName = Symbol.intern(ns.getName().toString() + "." + genClassName.toString());
         }
-        genClassForm.add(Keyword.intern(null, "name"));
+        genClassForm.add(NAME_KEY);
         genClassForm.add(genClassName);
         // Set the prefix to be Lindsey's choice of "java-"
-        genClassForm.add(Keyword.intern(null, "prefix"));
+        genClassForm.add(PREFIX_KEY);
         genClassForm.add(JAVA_METHOD_PREFIX);
         // TODO Check for presence of "main" method
         //      as part of analysis.
@@ -1808,7 +1817,7 @@ public static class JavaMethodReader extends AFn {
         // BEGIN subclass-of
         if (forms.size() > idx) {
             if (SUBCLASS_OF.equals(forms.get(idx))) {
-                genClassForm.add(Keyword.intern(null, "extends"));
+                genClassForm.add(EXTENDS_KEY);
                 genClassForm.add(forms.get(idx + 1));
                 idx += 2;
             }
@@ -1817,7 +1826,7 @@ public static class JavaMethodReader extends AFn {
         // BEGIN implements
         if (forms.size() > idx) {
             if (IMPLEMENTS.equals(forms.get(idx))) {
-                genClassForm.add(Keyword.intern(null, "implements"));
+                genClassForm.add(IMPLEMENTS_KEY);
                 genClassForm.add(forms.get(idx + 1));
                 idx += 2;
             }
@@ -1834,6 +1843,8 @@ public static class JavaMethodReader extends AFn {
             // and the symbol name of the defn has the metadata we need
             // to build out the gen-class options.
             Object form = forms.get(i);
+            Boolean isStaticMethod = false;
+            Boolean isMain = false;
             if (form instanceof PersistentList) {
                 PersistentList plist = (PersistentList) form;
                 if (!plist.isEmpty()) {
@@ -1841,12 +1852,13 @@ public static class JavaMethodReader extends AFn {
                     if (DEFN.equals(firstForm)) {
                         Symbol defnName = (Symbol) plist.get(1);
                         if (defnName.equals(JAVA_MAIN_METHOD)) {
+                            isMain = true;
                             hasMain = true;
                         } else if (defnName.getName().startsWith(JAVA_METHOD_PREFIX)) {
                             IPersistentMap meta = defnName.meta();
                             if (meta != null) {
                                 Map metaMap = (Map) meta;
-                                // :access is public or private, public by default
+                                // :access is :public or :private, public by default
                                 Keyword access = (Keyword) metaMap.get(ACCESS_KEY);
                                 if (access == null || access.equals(PUBLIC)) {
                                     // TODO Support :static
@@ -1868,12 +1880,22 @@ public static class JavaMethodReader extends AFn {
                                     // The tag is the return type, Object if absent
                                     Object returnType = metaMap.get(RT.TAG_KEY);
                                     if (returnType == null) {
-                                        returnType = Symbol.intern("Object");
+                                        returnType = OBJECT_SYM;
                                     }
                                     methodDefinition.add(returnType);
 
-                                    genClassMethods = (PersistentVector) RT.conj(genClassMethods,
-                                                                                 PersistentVector.create(methodDefinition));
+                                    PersistentVector methodDefinitionVec = PersistentVector.create(methodDefinition);
+                                    Object staticVal = metaMap.get(STATIC_KEY);
+                                    if (staticVal != null) {
+                                        if (staticVal == RT.T) {
+                                            isStaticMethod = true;
+                                            methodDefinitionVec = methodDefinitionVec
+                                                .withMeta(PersistentHashMap.EMPTY
+                                                          .assoc(STATIC_KEY, RT.T));
+
+                                        }
+                                    }
+                                    genClassMethods = (PersistentVector) RT.conj(genClassMethods, methodDefinitionVec);
                                 } else if (access.equals(PRIVATE)) {
                                     // don't add to signature
                                 } else {
@@ -1884,16 +1906,27 @@ public static class JavaMethodReader extends AFn {
                     }
                 }
             }
+            // Clojure requires non-static methods to have `this` in method params
+            if (!isStaticMethod && !isMain) {
+                List defn = new ArrayList((PersistentList) form);
+                // TODO Support optional docstring
+                // 0 is defn, 1 is name, 2 is params
+                PersistentVector args = (PersistentVector) defn.get(2);
+                List argsList = new ArrayList(args);
+                argsList.add(0, THIS_ARG);
+                defn.set(2, PersistentVector.create(argsList));
+                form = PersistentList.create(defn);
+            }
             // Regardless, the form is still part of the program
             finalForm.add(form);
         }
 
         if (hasMain) {
-            genClassForm.add(Keyword.intern(null, "main"));
-            genClassForm.add(Symbol.intern("true"));
+            genClassForm.add(MAIN_KEY);
+            genClassForm.add(RT.T);
         }
         if (!genClassMethods.isEmpty()) {
-            genClassForm.add(Keyword.intern(null, "methods"));
+            genClassForm.add(METHODS_KEY);
             genClassForm.add(genClassMethods);
         }
 
@@ -1932,10 +1965,12 @@ public static List analyzeJavaMethod(List forms) {
                     Symbol sym = (Symbol) arg;
                     Object metaValue = sym.meta();
                     if (metaValue != null) {
-                        Object tag = ((Map) sym.meta()).get(RT.TAG_KEY);
+                        Map metaMap = (Map) metaValue;
+                        Object tag = metaMap.get(RT.TAG_KEY);
                         if (tag != null) {
                             signature.add(tag);
                         } else {
+                            // TODO Consider throwing error instead, this likely won't do what users expect
                             signature.add(Symbol.intern("Object"));
                         }
                     }
@@ -1947,12 +1982,6 @@ public static List analyzeJavaMethod(List forms) {
             finalForm.add(methodName.withMeta(methodMeta));
         } else {
             finalForm.add(methodName);
-        }
-
-        if (!methodName.equals(JAVA_MAIN_METHOD)) {
-            List argsList = new ArrayList(args);
-            argsList.add(0, Symbol.intern("this"));
-            args = PersistentVector.create(argsList);
         }
 
         finalForm.add(args);

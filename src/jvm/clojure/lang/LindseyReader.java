@@ -77,6 +77,12 @@ public class LindseyReader {
     static final Symbol SUBCLASS_OF = Symbol.intern("subclass-of");
     static final Symbol INTERFACE = Symbol.intern("interface");
     static final Symbol GEN_INTERFACE = Symbol.intern("gen-interface");
+    static final String JAVA_METHOD_PREFIX = "java-";
+    static final Symbol JAVA_MAIN_METHOD = Symbol.intern(JAVA_METHOD_PREFIX + "main");
+    static final Keyword ACCESS_KEY = Keyword.intern(null, "access");
+    static final Keyword SIGNATURE_KEY = Keyword.intern(null, "signature");
+    static final Keyword PUBLIC = Keyword.intern(null, "public");
+    static final Keyword PRIVATE = Keyword.intern(null, "private");
 
     static final Symbol QUOTE = Symbol.intern("quote");
     static final Symbol THE_VAR = Symbol.intern("var");
@@ -1200,7 +1206,7 @@ public class LindseyReader {
             if(list.isEmpty())
                 return PersistentList.EMPTY;
             IObj s = (IObj) PersistentList.create(list);
-            System.out.println("Method: " + s);
+            // System.out.println("Method: " + s);
             //		IObj s = (IObj) RT.seq(list);
             if(line != -1)
                 {
@@ -1223,7 +1229,6 @@ public class LindseyReader {
                     column = ((LineNumberingPushbackReader) r).getColumnNumber()-1;
                 }
             List list = readReservedForm(null, r, true);
-            System.out.println("HEADLESS: " + list);
             if(list.isEmpty())
                 return PersistentList.EMPTY;
             IObj s = (IObj) PersistentList.create(list);
@@ -1413,6 +1418,7 @@ public static class RecordReader extends AFn {
             if(list.isEmpty())
                 return PersistentList.EMPTY;
             IObj s = (IObj) PersistentList.create(list);
+            // System.out.println("JavaClassReader : " + s);
             //		IObj s = (IObj) RT.seq(list);
             if(line != -1)
                 {
@@ -1781,29 +1787,114 @@ public static class JavaMethodReader extends AFn {
         // call that gets passed to this method
         genClassForm.add(forms.get(0));
         // Second form is the name of class to be generated
+        Symbol genClassName = (Symbol) forms.get(1);
+        if (!genClassName.getName().contains(".")) {
+            // "Resolve" the class name by adding the current
+            // namespace if it's not provided, so
+            // class Foo in com.example.core namespace becomes
+            // (gen-class :name com.example.core.Foo ...)
+            Namespace ns = (Namespace) RT.CURRENT_NS.deref();
+            genClassName = Symbol.intern(ns.getName().toString() + "." + genClassName.toString());
+        }
         genClassForm.add(Keyword.intern(null, "name"));
-        genClassForm.add(forms.get(1));
+        genClassForm.add(genClassName);
+        // Set the prefix to be Lindsey's choice of "java-"
+        genClassForm.add(Keyword.intern(null, "prefix"));
+        genClassForm.add(JAVA_METHOD_PREFIX);
+        // TODO Check for presence of "main" method
+        //      as part of analysis.
         // Now handle optional arguments to gen-class
         Integer idx = 2;
         // BEGIN subclass-of
-        if (SUBCLASS_OF.equals(forms.get(idx))) {
-            genClassForm.add(Keyword.intern(null, "extends"));
-            genClassForm.add(forms.get(idx + 1));
-            idx += 2;
+        if (forms.size() > idx) {
+            if (SUBCLASS_OF.equals(forms.get(idx))) {
+                genClassForm.add(Keyword.intern(null, "extends"));
+                genClassForm.add(forms.get(idx + 1));
+                idx += 2;
+            }
         }
         // END sublcass-of
         // BEGIN implements
-        if (IMPLEMENTS.equals(forms.get(idx))) {
-            genClassForm.add(Keyword.intern(null, "implements"));
-            genClassForm.add(forms.get(idx + 1));
-            idx += 2;
+        if (forms.size() > idx) {
+            if (IMPLEMENTS.equals(forms.get(idx))) {
+                genClassForm.add(Keyword.intern(null, "implements"));
+                genClassForm.add(forms.get(idx + 1));
+                idx += 2;
+            }
         }
         // END implements
+
         // TODO Support the other options to gen-class
 
         // Now handle method definitions
+        PersistentVector genClassMethods = PersistentVector.EMPTY;
+        Boolean hasMain = false;
         for(int i = idx; i < forms.size(); i++) {
+            // By this point defn's have been read in full,
+            // and the symbol name of the defn has the metadata we need
+            // to build out the gen-class options.
+            Object form = forms.get(i);
+            if (form instanceof PersistentList) {
+                PersistentList plist = (PersistentList) form;
+                if (!plist.isEmpty()) {
+                    Object firstForm = plist.get(0);
+                    if (DEFN.equals(firstForm)) {
+                        Symbol defnName = (Symbol) plist.get(1);
+                        if (defnName.equals(JAVA_MAIN_METHOD)) {
+                            hasMain = true;
+                        } else if (defnName.getName().startsWith(JAVA_METHOD_PREFIX)) {
+                            IPersistentMap meta = defnName.meta();
+                            if (meta != null) {
+                                Map metaMap = (Map) meta;
+                                // :access is public or private, public by default
+                                Keyword access = (Keyword) metaMap.get(ACCESS_KEY);
+                                if (access == null || access.equals(PUBLIC)) {
+                                    // TODO Support :static
 
+                                    List methodDefinition = new ArrayList();
+                                    // add to signature, which looks like
+                                    // [foo [Integer] String] per method
+
+                                    // Take off prefix for base method name
+                                    String baseMethodName = defnName.getName();
+                                    baseMethodName = baseMethodName.substring(JAVA_METHOD_PREFIX.length(),baseMethodName.length());
+                                    methodDefinition.add(Symbol.intern(baseMethodName));
+
+                                    // We figure out signature in analyzeJavaMethod,
+                                    // so just grab from :signature
+                                    PersistentVector methodSignature = (PersistentVector) metaMap.get(SIGNATURE_KEY);
+                                    methodDefinition.add(methodSignature);
+
+                                    // The tag is the return type, Object if absent
+                                    Object returnType = metaMap.get(RT.TAG_KEY);
+                                    if (returnType == null) {
+                                        returnType = Symbol.intern("Object");
+                                    }
+                                    methodDefinition.add(returnType);
+
+                                    genClassMethods = (PersistentVector) RT.conj(genClassMethods,
+                                                                                 PersistentVector.create(methodDefinition));
+                                } else if (access.equals(PRIVATE)) {
+                                    // don't add to signature
+                                } else {
+                                    throw new IllegalStateException("Only :public and :private are legal values of :access");
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            // Regardless, the form is still part of the program
+            finalForm.add(form);
+        }
+
+        if (hasMain) {
+            genClassForm.add(Keyword.intern(null, "main"));
+            genClassForm.add(Symbol.intern("true"));
+        }
+        if (!genClassMethods.isEmpty()) {
+            genClassForm.add(Keyword.intern(null, "methods"));
+            genClassForm.add(genClassMethods);
         }
 
         finalForm.add(PersistentList.create(genClassForm));
@@ -1814,46 +1905,59 @@ public static List analyzeJavaMethod(List forms) {
         List finalForm = new ArrayList();
         // First form is `defn` per readReservedForm invocation
         finalForm.add(forms.get(0));
-        // Next to support two use-cases:
-        // 1. Map of attrs, then name, then args
-        // 2. Return type, then name, then args
-        Object attrsOrReturnType = forms.get(1);
-        IPersistentMap attrs = null;
-        if (attrsOrReturnType instanceof IPersistentMap) {
-            // Attrs
-            attrs = (IPersistentMap) attrsOrReturnType;
-        } else {
-            // Return type, add in as attr map with that
-            // as single entry.
-            attrs = PersistentHashMap
-                .EMPTY
-                .assoc(Keyword.intern(null, "return"), attrsOrReturnType);
-        }
+
         // When analyzing a whole gen-class form, we'll pluck out
-        // these attr maps and use them to inform the gen-class form itself.
+        // the metadata to inform the gen-class form itself. This metadata
+        // is available on the symbol itself at this point
+        // in Clojure's workflow, having just been read.
 
-        // Then comes the name
-        Symbol methodName = (Symbol) forms.get(2);
+        Symbol methodName = (Symbol) forms.get(1);
+        IPersistentMap methodMeta = methodName.meta();
+        methodName = Symbol.intern(JAVA_METHOD_PREFIX + methodName.getName());
 
-        // Then comes the params, which need to be
-        // in pairs of `^Typehint arg` so we can pull out
-        // the type hints and add them to gen-class if this method
-        // is marked as public.
-        PersistentVector args = (PersistentVector) forms.get(3);
-        List signature = new ArrayList();
-        for (int i = 0; i < args.size(); i++) {
-            Symbol sym = (Symbol) args.nth(i);
+        // TODO Support optional docstring in next position
 
-            System.out.println("WHOLLY META! " + sym.meta());
-            signature.add(sym);
+        // Any methods other than "main" need their signatures
+        // added explicitly to the gen-class form.
+        PersistentVector args = (PersistentVector) forms.get(2);
+        if (!methodName.equals(JAVA_MAIN_METHOD)) {
+            List signature = new ArrayList();
+            for (int i = 0; i < args.size(); i++) {
+                Object arg = args.nth(i);
+                if (Compiler._AMP_.equals(arg)) {
+                    throw new IllegalArgumentException("Clojure doesn't really support vararg methods in generated classes. Go write this in Java.");
+                } else {
+                    Symbol sym = (Symbol) arg;
+                    Object metaValue = sym.meta();
+                    if (metaValue != null) {
+                        Object tagValue = ((Map) sym.meta()).get(RT.TAG_KEY);
+                        Class tag = null;
+                        if (tagValue != null) {
+                            tag = (Class) tagValue;
+                            signature.add(tag);
+                        } else {
+                            signature.add(Object.class);
+                        }
+                    }
+                }
+            }
+            methodMeta = methodMeta.assoc(SIGNATURE_KEY, PersistentVector.create(signature));
+
+            // Add the methodName and attach the metadata of our attrs to it
+            finalForm.add(methodName.withMeta(methodMeta));
+        } else {
+            finalForm.add(methodName);
         }
-        // Add the signature to the attrs to be plucked again later
-        attrs = attrs.assoc(Keyword.intern(null, "signature"), PersistentVector.create(signature));
 
-        // Add the methodName and attach the metadata of our attrs to it
-        finalForm.add(methodName.withMeta(attrs));
+        if (!methodName.equals(JAVA_MAIN_METHOD)) {
+            List argsList = new ArrayList(args);
+            argsList.add(0, Symbol.intern("this"));
+            args = PersistentVector.create(argsList);
+        }
+
         finalForm.add(args);
-        finalForm.addAll(new ArrayList(forms.subList(4,forms.size())));
+        // Add body of method definition
+        finalForm.addAll(new ArrayList(forms.subList(3,forms.size())));
         return finalForm;
     }
 

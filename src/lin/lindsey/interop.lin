@@ -5,8 +5,12 @@ java-class SimpleClass
     println("Embedded -main for SimpleClass")
   end
 
-  java-method ^String foo []
+  java-method ^String noArgs []
     "wowza!"
+  end
+
+  java-method ^Long multiply [^Long x]
+    *(x, 42)
   end
 end
 

@@ -1913,6 +1913,8 @@ public static List analyzeJavaMethod(List forms) {
 
         Symbol methodName = (Symbol) forms.get(1);
         IPersistentMap methodMeta = methodName.meta();
+        if (methodMeta == null)
+            methodMeta = PersistentHashMap.EMPTY;
         methodName = Symbol.intern(JAVA_METHOD_PREFIX + methodName.getName());
 
         // TODO Support optional docstring in next position
@@ -1930,13 +1932,11 @@ public static List analyzeJavaMethod(List forms) {
                     Symbol sym = (Symbol) arg;
                     Object metaValue = sym.meta();
                     if (metaValue != null) {
-                        Object tagValue = ((Map) sym.meta()).get(RT.TAG_KEY);
-                        Class tag = null;
-                        if (tagValue != null) {
-                            tag = (Class) tagValue;
+                        Object tag = ((Map) sym.meta()).get(RT.TAG_KEY);
+                        if (tag != null) {
                             signature.add(tag);
                         } else {
-                            signature.add(Object.class);
+                            signature.add(Symbol.intern("Object"));
                         }
                     }
                 }

@@ -44,6 +44,8 @@ public class LindseyReader {
     static final Symbol END = Symbol.intern("end");
     static final Symbol LET = Symbol.intern("let");
     static final Symbol DO = Symbol.intern("do");
+    // Namespaces
+    static final Symbol NS = Symbol.intern("ns");
     // Functions
     static final Symbol DEFN = Symbol.intern("defn");
     static final Symbol FUNCTION = Symbol.intern("function"); // to remove, maybe
@@ -165,17 +167,17 @@ public class LindseyReader {
 	dispatchMacros['<'] = new UnreadableReader();
 	dispatchMacros['_'] = new DiscardReader();
 
-        reservedSymbols.put(FUNCTION, new FunctionReader());
-        reservedSymbols.put(FUN, new FunReader());
+        reservedSymbols.put(FUNCTION, new ReservedDelegateReader(DEFN));
+        reservedSymbols.put(FUN, new ReservedDelegateReader(Compiler.FN));
         reservedSymbols.put(ARITY, new HeadlessReader());
-        reservedSymbols.put(MULTI, new MultiReader());
-        reservedSymbols.put(METHOD, new MethodReader());
+        reservedSymbols.put(MULTI, new ReservedDelegateReader(DEFMULTI));
+        reservedSymbols.put(METHOD, new ReservedDelegateReader(DEFMETHOD));
         reservedSymbols.put(LET, new LetReader());
         reservedSymbols.put(IF, new IfReader());
-        reservedSymbols.put(PROTOCOL, new ProtocolReader());
+        reservedSymbols.put(PROTOCOL, new ReservedDelegateReader(DEFPROTOCOL));
         reservedSymbols.put(PROTO_METHOD, new HeadlessReader());
         reservedSymbols.put(IMPL, new HeadlessReader());
-        reservedSymbols.put(EXTENDS, new ExtendsReader());
+        reservedSymbols.put(EXTENDS, new ReservedDelegateReader(EXTENDS));
         reservedSymbols.put(RECORD, new RecordReader());
         reservedSymbols.put(JAVA_CLASS, new JavaClassReader());
         reservedSymbols.put(JAVA_METHOD, new JavaMethodReader());
@@ -1126,7 +1128,13 @@ public class LindseyReader {
 
     }
 
-    public static class FunctionReader extends AFn {
+    public static class ReservedDelegateReader extends AFn {
+        private Symbol delegateSymbol = null;
+
+        public ReservedDelegateReader(Symbol delegateSymbol) {
+            this.delegateSymbol = delegateSymbol;
+        }
+
 	public Object invoke(Object reader) {
             PushbackReader r = (PushbackReader) reader;
             int line = -1;
@@ -1136,86 +1144,10 @@ public class LindseyReader {
                     line = ((LineNumberingPushbackReader) r).getLineNumber();
                     column = ((LineNumberingPushbackReader) r).getColumnNumber()-1;
                 }
-            List list = readReservedForm(DEFN, r, true);
+            List list = readReservedForm(this.delegateSymbol, r, true);
             if(list.isEmpty())
                 return PersistentList.EMPTY;
             IObj s = (IObj) PersistentList.create(list);
-            //		IObj s = (IObj) RT.seq(list);
-            if(line != -1)
-                {
-                    return s.withMeta(RT.map(RT.LINE_KEY, line, RT.COLUMN_KEY, column));
-                }
-            else
-                return s;
-	}
-
-    }
-
-    public static class FunReader extends AFn {
-	public Object invoke(Object reader) {
-            PushbackReader r = (PushbackReader) reader;
-            int line = -1;
-            int column = -1;
-            if(r instanceof LineNumberingPushbackReader)
-                {
-                    line = ((LineNumberingPushbackReader) r).getLineNumber();
-                    column = ((LineNumberingPushbackReader) r).getColumnNumber()-1;
-                }
-            List list = readReservedForm(Compiler.FN, r, true);
-            if(list.isEmpty())
-                return PersistentList.EMPTY;
-            IObj s = (IObj) PersistentList.create(list);
-            //		IObj s = (IObj) RT.seq(list);
-            if(line != -1)
-                {
-                    return s.withMeta(RT.map(RT.LINE_KEY, line, RT.COLUMN_KEY, column));
-                }
-            else
-                return s;
-	}
-
-    }
-
-    public static class MultiReader extends AFn {
-	public Object invoke(Object reader) {
-            PushbackReader r = (PushbackReader) reader;
-            int line = -1;
-            int column = -1;
-            if(r instanceof LineNumberingPushbackReader)
-                {
-                    line = ((LineNumberingPushbackReader) r).getLineNumber();
-                    column = ((LineNumberingPushbackReader) r).getColumnNumber()-1;
-                }
-            List list = readReservedForm(DEFMULTI, r, true);
-            if(list.isEmpty())
-                return PersistentList.EMPTY;
-            IObj s = (IObj) PersistentList.create(list);
-            //		IObj s = (IObj) RT.seq(list);
-            if(line != -1)
-                {
-                    return s.withMeta(RT.map(RT.LINE_KEY, line, RT.COLUMN_KEY, column));
-                }
-            else
-                return s;
-	}
-
-    }
-
-    public static class MethodReader extends AFn {
-	public Object invoke(Object reader) {
-            PushbackReader r = (PushbackReader) reader;
-            int line = -1;
-            int column = -1;
-            if(r instanceof LineNumberingPushbackReader)
-                {
-                    line = ((LineNumberingPushbackReader) r).getLineNumber();
-                    column = ((LineNumberingPushbackReader) r).getColumnNumber()-1;
-                }
-            List list = readReservedForm(DEFMETHOD, r, true);
-            if(list.isEmpty())
-                return PersistentList.EMPTY;
-            IObj s = (IObj) PersistentList.create(list);
-            // System.out.println("Method: " + s);
             //		IObj s = (IObj) RT.seq(list);
             if(line != -1)
                 {
@@ -1252,7 +1184,7 @@ public class LindseyReader {
 
     }
 
-public static class LetReader extends AFn {
+    public static class LetReader extends AFn {
 	public Object invoke(Object reader) {
             PushbackReader r = (PushbackReader) reader;
             int line = -1;
@@ -1263,6 +1195,7 @@ public static class LetReader extends AFn {
                     column = ((LineNumberingPushbackReader) r).getColumnNumber()-1;
                 }
             List list = readReservedForm(LET, r, true);
+            // TODO Put this in an analyzeLet method
             Object bindingForm = list.get(1);
             if (!(bindingForm instanceof PersistentVector))
                 throw new IllegalArgumentException("The 'let' reserved word expects a vector of binding forms.");
@@ -1297,7 +1230,7 @@ public static class LetReader extends AFn {
 
     }
 
-public static class IfReader extends AFn {
+    public static class IfReader extends AFn {
 	public Object invoke(Object reader) {
             PushbackReader r = (PushbackReader) reader;
             int line = -1;
@@ -1320,57 +1253,6 @@ public static class IfReader extends AFn {
                 list = tmpList;
             }
 
-            if(list.isEmpty())
-                return PersistentList.EMPTY;
-            IObj s = (IObj) PersistentList.create(list);
-            //		IObj s = (IObj) RT.seq(list);
-            if(line != -1)
-                {
-                    return s.withMeta(RT.map(RT.LINE_KEY, line, RT.COLUMN_KEY, column));
-                }
-            else
-                return s;
-	}
-
-    }
-
-public static class ProtocolReader extends AFn {
-	public Object invoke(Object reader) {
-            PushbackReader r = (PushbackReader) reader;
-            int line = -1;
-            int column = -1;
-            if(r instanceof LineNumberingPushbackReader)
-                {
-                    line = ((LineNumberingPushbackReader) r).getLineNumber();
-                    column = ((LineNumberingPushbackReader) r).getColumnNumber()-1;
-                }
-            List list = readReservedForm(DEFPROTOCOL, r, true);
-            if(list.isEmpty())
-                return PersistentList.EMPTY;
-            IObj s = (IObj) PersistentList.create(list);
-            // System.out.println("Protocol: " + s);
-            //		IObj s = (IObj) RT.seq(list);
-            if(line != -1)
-                {
-                    return s.withMeta(RT.map(RT.LINE_KEY, line, RT.COLUMN_KEY, column));
-                }
-            else
-                return s;
-	}
-
-    }
-
-    public static class ExtendsReader extends AFn {
-	public Object invoke(Object reader) {
-            PushbackReader r = (PushbackReader) reader;
-            int line = -1;
-            int column = -1;
-            if(r instanceof LineNumberingPushbackReader)
-                {
-                    line = ((LineNumberingPushbackReader) r).getLineNumber();
-                    column = ((LineNumberingPushbackReader) r).getColumnNumber()-1;
-                }
-            List list = readReservedForm(EXTENDS, r, true);
             if(list.isEmpty())
                 return PersistentList.EMPTY;
             IObj s = (IObj) PersistentList.create(list);

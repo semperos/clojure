@@ -1,4 +1,7 @@
-(ns lindsey.interop)
+ns lindsey.interop
+  require-ns [clojure.string :refer [upper-case]] end
+  ;; :require([clojure.string :refer [upper-case]])
+end
 
 java-class SimpleClass
   java-method main [& args]
@@ -15,7 +18,7 @@ java-class SimpleClass
 
   java-method ^{:static true}
     staticCharge []
-      "Static charge complete."
+      upper-case("Static charge complete.")
   end
 
 end

@@ -1,4 +1,5 @@
-(ns lindsey.base)
+ns lindsey.base end
+
 ;;
 ;; Load by doing:
 ;;

@@ -46,6 +46,8 @@ public class LindseyReader {
     static final Symbol DO = Symbol.intern("do");
     // Namespaces
     static final Symbol NS = Symbol.intern("ns");
+    static final Symbol REQUIRE_NS = Symbol.intern("require-ns");
+    static final Symbol REQUIRE_CLASS = Symbol.intern("require-class");
     // Functions
     static final Symbol DEFN = Symbol.intern("defn");
     static final Symbol FUNCTION = Symbol.intern("function"); // to remove, maybe
@@ -167,6 +169,9 @@ public class LindseyReader {
 	dispatchMacros['<'] = new UnreadableReader();
 	dispatchMacros['_'] = new DiscardReader();
 
+        reservedSymbols.put(NS, new ReservedDelegateReader(NS));
+        reservedSymbols.put(REQUIRE_NS, new ReservedDelegateReader(Keyword.intern(null, "require")));
+        reservedSymbols.put(REQUIRE_CLASS, new ReservedDelegateReader(Keyword.intern(null, "import")));
         reservedSymbols.put(FUNCTION, new ReservedDelegateReader(DEFN));
         reservedSymbols.put(FUN, new ReservedDelegateReader(Compiler.FN));
         reservedSymbols.put(ARITY, new HeadlessReader());
@@ -1129,10 +1134,10 @@ public class LindseyReader {
     }
 
     public static class ReservedDelegateReader extends AFn {
-        private Symbol delegateSymbol = null;
+        private Object delegateSymOrKw = null;
 
-        public ReservedDelegateReader(Symbol delegateSymbol) {
-            this.delegateSymbol = delegateSymbol;
+        public ReservedDelegateReader(Object delegate) {
+            this.delegateSymOrKw = delegate;
         }
 
 	public Object invoke(Object reader) {
@@ -1144,7 +1149,7 @@ public class LindseyReader {
                     line = ((LineNumberingPushbackReader) r).getLineNumber();
                     column = ((LineNumberingPushbackReader) r).getColumnNumber()-1;
                 }
-            List list = readReservedForm(this.delegateSymbol, r, true);
+            List list = readReservedForm(this.delegateSymOrKw, r, true);
             if(list.isEmpty())
                 return PersistentList.EMPTY;
             IObj s = (IObj) PersistentList.create(list);
@@ -1321,7 +1326,7 @@ public static class RecordReader extends AFn {
 
     }
 
-public static class JavaMethodReader extends AFn {
+    public static class JavaMethodReader extends AFn {
 	public Object invoke(Object reader) {
             PushbackReader r = (PushbackReader) reader;
             int line = -1;
@@ -1518,14 +1523,14 @@ public static class JavaMethodReader extends AFn {
 	return a;
     }
 
-    public static List readReservedForm(Symbol clojureSym, PushbackReader r, boolean isRecursive) {
+    public static List readReservedForm(Object symOrKw, PushbackReader r, boolean isRecursive) {
 	final int firstline =
             (r instanceof LineNumberingPushbackReader) ?
             ((LineNumberingPushbackReader) r).getLineNumber() : -1;
 
 	ArrayList a = new ArrayList();
-        if (clojureSym != null)
-            a.add(clojureSym);
+        if (symOrKw != null)
+            a.add(symOrKw);
 
 	for(; ;)
             {

@@ -1,6 +1,5 @@
 ns lindsey.interop
   require-ns [clojure.string :refer [upper-case]] end
-  ;; :require([clojure.string :refer [upper-case]])
 end
 
 java-class SimpleClass

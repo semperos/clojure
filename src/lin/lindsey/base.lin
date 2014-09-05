@@ -1,11 +1,11 @@
 ns lindsey.base end
 
 ;;
-;; Load by doing:
+;; Load by doing one of:
 ;;
 ;; (defn load-lindsey [f] (binding [*current-reader* :lindsey-reader] (load-file f)))
 ;; (defn read-lindsey [s] (binding [*current-reader* :lindsey-reader] (read-string s)))
-;; (load-lindsey "base.lin")
+;; (defn compile-lindsey [a-ns] (binding [*current-reader* :lindsey-reader] (compile a-ns)))
 ;;
 
 function foo

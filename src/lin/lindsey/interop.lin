@@ -20,12 +20,37 @@ java-class SimpleClass
     staticCharge []
       upper-case("Static charge complete.")
   end
+end
+
+java-class StringIterator implements java.util.Iterator
+
+  constructor [^String s]
+    super()
+    atom({:index 0 :s s})
+  end
+
+  java-method ^Boolean hasNext []
+    let [{:keys [s index]} = deref(this.state())]
+      <(index, count(s))
+    end
+  end
+
+  java-method ^Character next []
+    let [{:keys [s index]} = deref(this.state())
+         ch = s.charAt(index)]
+      swap!(this.state(), assoc, :index, inc(index))
+      ch
+    end
+  end
 
 end
 
-;; function java-main [& args]
-;;   println("Main for SimpleClass")
-;; end
+;; (ns clojure.examples.instance
+;;     (:gen-class
+;;      :implements [java.util.Iterator]
+;;      :init init
+;;      :constructors {[String] []}
+;;      :state state))
 
 ;; java-class MyClass
 ;;   java-method ^{:access :public,

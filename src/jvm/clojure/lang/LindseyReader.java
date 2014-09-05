@@ -65,7 +65,7 @@ public class LindseyReader {
     static final Symbol EQUALS = Symbol.intern("=");
     // Dot-form calls for methods
     static final Symbol DOT = Symbol.intern(".");
-    // Clojure protocols and records
+   // Clojure protocols and records
     static final Symbol PROTOCOL = Symbol.intern("protocol");
     static final Symbol DEFPROTOCOL = Symbol.intern("defprotocol");
     static final Symbol PROTO_METHOD = Symbol.intern("proto-method");
@@ -77,6 +77,7 @@ public class LindseyReader {
     static final Symbol JAVA_CLASS = Symbol.intern("java-class");
     static final Symbol GEN_CLASS = Symbol.intern("gen-class");
     static final Symbol JAVA_METHOD = Symbol.intern("java-method");
+    static final Symbol CTOR_METHOD = Symbol.intern("java-constructor");
     static final Symbol IMPLEMENTS = Symbol.intern("implements");
     static final Symbol SUBCLASS_OF = Symbol.intern("subclass-of");
     static final Symbol INTERFACE = Symbol.intern("interface");
@@ -88,6 +89,12 @@ public class LindseyReader {
     static final String JAVA_METHOD_PREFIX = "java-";
     static final Symbol JAVA_MAIN_METHOD = Symbol.intern(JAVA_METHOD_PREFIX + "main");
     static final Symbol THIS_ARG = Symbol.intern("this");
+    static final Keyword INIT_KEY = Keyword.intern(null, "init");
+    static final Keyword CTOR_KEY = Keyword.intern(null, "constructor"); // internal metadata key
+    static final Keyword SUPER_CTORS_KEY = Keyword.intern(null, "super-constructors"); // public metadata key
+    static final Keyword CTORS_KEY = Keyword.intern(null, "constructors"); // Clojure's key
+    static final Keyword STATE_KEY = Keyword.intern(null, "state");
+    static final Symbol STATE_SYM = Symbol.intern("state");
     static final Keyword MAIN_KEY = Keyword.intern(null, "main");
     static final Keyword METHODS_KEY = Keyword.intern(null, "methods");
     static final Keyword ACCESS_KEY = Keyword.intern(null, "access");
@@ -186,6 +193,7 @@ public class LindseyReader {
         reservedSymbols.put(RECORD, new RecordReader());
         reservedSymbols.put(JAVA_CLASS, new JavaClassReader());
         reservedSymbols.put(JAVA_METHOD, new JavaMethodReader());
+        reservedSymbols.put(CTOR_METHOD, new JavaMethodReader(true));
     }
 
     static boolean isWhitespace(int ch){
@@ -1327,6 +1335,16 @@ public static class RecordReader extends AFn {
     }
 
     public static class JavaMethodReader extends AFn {
+        private final Boolean isCtor;
+
+        public JavaMethodReader() {
+            this.isCtor = false;
+        }
+
+        public JavaMethodReader(Boolean isCtor) {
+            this.isCtor = isCtor;
+        }
+
 	public Object invoke(Object reader) {
             PushbackReader r = (PushbackReader) reader;
             int line = -1;
@@ -1337,7 +1355,7 @@ public static class RecordReader extends AFn {
                     column = ((LineNumberingPushbackReader) r).getColumnNumber()-1;
                 }
             List forms = readReservedForm(DEFN, r, true);
-            List list = analyzeJavaMethod(forms);
+            List list = analyzeJavaMethod(forms, this.isCtor);
             if(list.isEmpty())
                 return PersistentList.EMPTY;
             IObj s = (IObj) PersistentList.create(list);
@@ -1692,11 +1710,15 @@ public static class RecordReader extends AFn {
             Namespace ns = (Namespace) RT.CURRENT_NS.deref();
             genClassName = Symbol.intern(ns.getName().toString() + "." + genClassName.toString());
         }
+        // Name of class
         genClassForm.add(NAME_KEY);
         genClassForm.add(genClassName);
         // Set the prefix to be Lindsey's choice of "java-"
         genClassForm.add(PREFIX_KEY);
         genClassForm.add(JAVA_METHOD_PREFIX);
+        // State is always `state`
+        genClassForm.add(STATE_KEY);
+        genClassForm.add(STATE_SYM);
         // TODO Check for presence of "main" method
         //      as part of analysis.
         // Now handle optional arguments to gen-class
@@ -1722,8 +1744,10 @@ public static class RecordReader extends AFn {
 
         // TODO Support the other options to gen-class
 
-        // Now handle method definitions
+        // Now handle genClass* options
         PersistentVector genClassMethods = PersistentVector.EMPTY;
+        Symbol genClassInit = null;
+        IPersistentMap genClassConstructors = PersistentHashMap.EMPTY;
         Boolean hasMain = false;
         for(int i = idx; i < forms.size(); i++) {
             // By this point defn's have been read in full,
@@ -1732,6 +1756,7 @@ public static class RecordReader extends AFn {
             Object form = forms.get(i);
             Boolean isStaticMethod = false;
             Boolean isMain = false;
+            Boolean isCtor = false;
             if (form instanceof PersistentList) {
                 PersistentList plist = (PersistentList) form;
                 if (!plist.isEmpty()) {
@@ -1746,10 +1771,9 @@ public static class RecordReader extends AFn {
                             if (meta != null) {
                                 Map metaMap = (Map) meta;
                                 // :access is :public or :private, public by default
+                                // BEGIN access handling
                                 Keyword access = (Keyword) metaMap.get(ACCESS_KEY);
                                 if (access == null || access.equals(PUBLIC)) {
-                                    // TODO Support :static
-
                                     List methodDefinition = new ArrayList();
                                     // add to signature, which looks like
                                     // [foo [Integer] String] per method
@@ -1788,13 +1812,58 @@ public static class RecordReader extends AFn {
                                 } else {
                                     throw new IllegalStateException("Only :public and :private are legal values of :access");
                                 }
+                                // END access handling
+                                // BEGIN constructor handling
+                                Object isCtorVal = metaMap.get(CTOR_KEY);
+                                if (isCtorVal != null) {
+                                    isCtor = (Boolean) isCtorVal;
+                                    if (isCtor) {
+                                        // Constructor belongs to the :init key
+                                        // For now, burden on developer to make sure
+                                        // they only use constructor...end once
+                                        // and that it handles the arities they wish to handle.
+                                        String baseInitName = defnName.getName();
+                                        baseInitName = baseInitName.substring(JAVA_METHOD_PREFIX.length(),baseInitName.length());
+                                        genClassInit = Symbol.intern(baseInitName);
+
+                                        // Metadata needs to contain a :super-constructors
+                                        // entry with the mapping of this class' constructor arity
+                                        // to that of the super class'. So
+                                        // if this class takes [String] but the superclass takes [],
+                                        // the mapping is {[String] []}.
+                                        Object superConstructorsVal = metaMap.get(SUPER_CTORS_KEY);
+                                        if (superConstructorsVal != null) {
+                                            // Convenience that just specifies the super constructor signature.
+                                            // Works when class being generated has single arity
+                                            // that obviously maps to this super class signature.
+                                            System.out.println("META MAP: " + metaMap);
+                                            if (superConstructorsVal instanceof PersistentVector) {
+                                                // TODO
+                                                // 1. Grab arglists out of metadata
+                                                // 2. Associate the only arity of this function with this value
+                                            } else if (superConstructorsVal instanceof Map) {
+                                                genClassConstructors = (IPersistentMap) superConstructorsVal;
+                                            } else {
+                                                throw new IllegalArgumentException("The :super-constructors entry must either be a single vector specifying the super class' constructor signature, or a map of this class' constructor signatures to their corresponding super class signatures.");
+                                            }
+
+                                        } else {
+                                            System.out.println("WARNING: You defined a constructor for your class but did not specify what super-class constructor to invoke in a :super-constructor entry on your constructor method. Defaulting to a no-arg super class constructor.");
+                                            // TODO
+                                            // 1. Grab arglists out of metadata
+                                            // 2. Associate the only arity of this function with no-arg arity for super
+                                            genClassConstructors = PersistentHashMap.EMPTY
+                                                .assoc(PersistentVector.EMPTY, PersistentVector.EMPTY);
+                                        }
+                                    }
+                                }
                             }
                         }
                     }
                 }
             }
             // Clojure requires non-static methods to have `this` in method params
-            if (!isStaticMethod && !isMain) {
+            if (!isStaticMethod && !isMain && !isCtor) {
                 List defn = new ArrayList((PersistentList) form);
                 // TODO Support optional docstring
                 // 0 is defn, 1 is name, 2 is params
@@ -1816,12 +1885,23 @@ public static class RecordReader extends AFn {
             genClassForm.add(METHODS_KEY);
             genClassForm.add(genClassMethods);
         }
+        if (genClassInit != null) {
+            genClassForm.add(INIT_KEY);
+            genClassForm.add(genClassInit);
+            // When there's an init, there must also be constructors
+            genClassForm.add(CTORS_KEY);
+            genClassForm.add(genClassConstructors);
+        }
 
         finalForm.add(PersistentList.create(genClassForm));
         return finalForm;
     }
 
-public static List analyzeJavaMethod(List forms) {
+    public static List analyzeJavaMethod(List forms) {
+        return analyzeJavaMethod(forms, false);
+    }
+
+    public static List analyzeJavaMethod(List forms, Boolean isCtor) {
         List finalForm = new ArrayList();
         // First form is `defn` per readReservedForm invocation
         finalForm.add(forms.get(0));
@@ -1842,7 +1922,7 @@ public static List analyzeJavaMethod(List forms) {
         // Any methods other than "main" need their signatures
         // added explicitly to the gen-class form.
         PersistentVector args = (PersistentVector) forms.get(2);
-        if (!methodName.equals(JAVA_MAIN_METHOD)) {
+        if (!methodName.equals(JAVA_MAIN_METHOD) && !isCtor) {
             List signature = new ArrayList();
             for (int i = 0; i < args.size(); i++) {
                 Object arg = args.nth(i);
@@ -1866,6 +1946,10 @@ public static List analyzeJavaMethod(List forms) {
             methodMeta = methodMeta.assoc(SIGNATURE_KEY, PersistentVector.create(signature));
 
             // Add the methodName and attach the metadata of our attrs to it
+            finalForm.add(methodName.withMeta(methodMeta));
+        } else if (isCtor) {
+            // Add {:constructor true} to metadata for use by analyzeJavaClass
+            methodMeta = methodMeta.assoc(CTOR_KEY, RT.T);
             finalForm.add(methodName.withMeta(methodMeta));
         } else {
             finalForm.add(methodName);

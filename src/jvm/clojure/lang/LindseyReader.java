@@ -77,6 +77,7 @@ public class LindseyReader {
     static final Symbol JAVA_CLASS = Symbol.intern("java-class");
     static final Symbol GEN_CLASS = Symbol.intern("gen-class");
     static final Symbol JAVA_METHOD = Symbol.intern("java-method");
+    static final Symbol JAVA_IMPL = Symbol.intern("java-impl"); // interface impl's
     static final Symbol CTOR_METHOD = Symbol.intern("java-constructor");
     static final Symbol IMPLEMENTS = Symbol.intern("implements");
     static final Symbol SUBCLASS_OF = Symbol.intern("subclass-of");
@@ -145,6 +146,10 @@ public class LindseyReader {
     static Var ARG_ENV = Var.create(null).setDynamic();
     static IFn ctorReader = new CtorReader();
 
+    enum MethodTypes {
+        NORMAL, CTOR, IMPL;
+    }
+
     static
     {
 	macros['"'] = new StringReader();
@@ -193,7 +198,8 @@ public class LindseyReader {
         reservedSymbols.put(RECORD, new RecordReader());
         reservedSymbols.put(JAVA_CLASS, new JavaClassReader());
         reservedSymbols.put(JAVA_METHOD, new JavaMethodReader());
-        reservedSymbols.put(CTOR_METHOD, new JavaMethodReader(true));
+        reservedSymbols.put(JAVA_IMPL, new JavaMethodReader(MethodTypes.IMPL));
+        reservedSymbols.put(CTOR_METHOD, new JavaMethodReader(MethodTypes.CTOR));
     }
 
     static boolean isWhitespace(int ch){
@@ -1335,14 +1341,14 @@ public static class RecordReader extends AFn {
     }
 
     public static class JavaMethodReader extends AFn {
-        private final Boolean isCtor;
+        private final MethodTypes methodType;
 
         public JavaMethodReader() {
-            this.isCtor = false;
+            this.methodType = MethodTypes.NORMAL;
         }
 
-        public JavaMethodReader(Boolean isCtor) {
-            this.isCtor = isCtor;
+        public JavaMethodReader(MethodTypes methodType) {
+            this.methodType = methodType;
         }
 
 	public Object invoke(Object reader) {
@@ -1355,7 +1361,7 @@ public static class RecordReader extends AFn {
                     column = ((LineNumberingPushbackReader) r).getColumnNumber()-1;
                 }
             List forms = readReservedForm(DEFN, r, true);
-            List list = analyzeJavaMethod(forms, this.isCtor);
+            List list = analyzeJavaMethod(forms, this.methodType);
             if(list.isEmpty())
                 return PersistentList.EMPTY;
             IObj s = (IObj) PersistentList.create(list);
@@ -1736,7 +1742,14 @@ public static class RecordReader extends AFn {
         if (forms.size() > idx) {
             if (IMPLEMENTS.equals(forms.get(idx))) {
                 genClassForm.add(IMPLEMENTS_KEY);
-                genClassForm.add(forms.get(idx + 1));
+                Object implementsVal = forms.get(idx + 1);
+                PersistentVector impls = null;
+                if (implementsVal instanceof PersistentVector) {
+                    impls = (PersistentVector) implementsVal;
+                } else {
+                    impls = PersistentVector.EMPTY.cons(implementsVal);
+                }
+                genClassForm.add(impls);
                 idx += 2;
             }
         }
@@ -1771,46 +1784,52 @@ public static class RecordReader extends AFn {
                             if (meta != null) {
                                 Map metaMap = (Map) meta;
                                 // :access is :public or :private, public by default
-                                // BEGIN access handling
-                                Keyword access = (Keyword) metaMap.get(ACCESS_KEY);
-                                if (access == null || access.equals(PUBLIC)) {
-                                    List methodDefinition = new ArrayList();
-                                    // add to signature, which looks like
-                                    // [foo [Integer] String] per method
+                                // BEGIN access handling, what ends up in :methods key
+                                // Skip the constructor
+                                if (metaMap.get(CTOR_KEY) == null) {
+                                    Object accessVal = metaMap.get(ACCESS_KEY);
+                                    Keyword access = null;
+                                    if (accessVal == null)
+                                        access = PUBLIC;
+                                    if (access.equals(PUBLIC)) {
+                                        List methodDefinition = new ArrayList();
+                                        // add to signature, which looks like
+                                        // [foo [Integer] String] per method
 
-                                    // Take off prefix for base method name
-                                    String baseMethodName = defnName.getName();
-                                    baseMethodName = baseMethodName.substring(JAVA_METHOD_PREFIX.length(),baseMethodName.length());
-                                    methodDefinition.add(Symbol.intern(baseMethodName));
+                                        // Take off prefix for base method name
+                                        String baseMethodName = defnName.getName();
+                                        baseMethodName = baseMethodName.substring(JAVA_METHOD_PREFIX.length(),baseMethodName.length());
+                                        methodDefinition.add(Symbol.intern(baseMethodName));
 
-                                    // We figure out signature in analyzeJavaMethod,
-                                    // so just grab from :signature
-                                    PersistentVector methodSignature = (PersistentVector) metaMap.get(SIGNATURE_KEY);
-                                    methodDefinition.add(methodSignature);
+                                        // We figure out signature in analyzeJavaMethod,
+                                        // so just grab from :signature
+                                        PersistentVector methodSignature = (PersistentVector) metaMap.get(SIGNATURE_KEY);
+                                        methodDefinition.add(methodSignature);
 
-                                    // The tag is the return type, Object if absent
-                                    Object returnType = metaMap.get(RT.TAG_KEY);
-                                    if (returnType == null) {
-                                        returnType = OBJECT_SYM;
-                                    }
-                                    methodDefinition.add(returnType);
-
-                                    PersistentVector methodDefinitionVec = PersistentVector.create(methodDefinition);
-                                    Object staticVal = metaMap.get(STATIC_KEY);
-                                    if (staticVal != null) {
-                                        if (staticVal == RT.T) {
-                                            isStaticMethod = true;
-                                            methodDefinitionVec = methodDefinitionVec
-                                                .withMeta(PersistentHashMap.EMPTY
-                                                          .assoc(STATIC_KEY, RT.T));
-
+                                        // The tag is the return type, Object if absent
+                                        Object returnType = metaMap.get(RT.TAG_KEY);
+                                        if (returnType == null) {
+                                            returnType = OBJECT_SYM;
                                         }
+                                        methodDefinition.add(returnType);
+
+                                        PersistentVector methodDefinitionVec = PersistentVector.create(methodDefinition);
+                                        Object staticVal = metaMap.get(STATIC_KEY);
+                                        if (staticVal != null) {
+                                            if (staticVal == RT.T) {
+                                                isStaticMethod = true;
+                                                methodDefinitionVec = methodDefinitionVec
+                                                    .withMeta(PersistentHashMap.EMPTY
+                                                              .assoc(STATIC_KEY, RT.T));
+
+                                            }
+                                        }
+                                        genClassMethods = (PersistentVector) RT.conj(genClassMethods, methodDefinitionVec);
+                                    } else if (access.equals(PRIVATE)) {
+                                        // don't add to signature
+                                    } else {
+                                        throw new IllegalStateException("Only :public and :private are legal values of :access, found : " + access);
                                     }
-                                    genClassMethods = (PersistentVector) RT.conj(genClassMethods, methodDefinitionVec);
-                                } else if (access.equals(PRIVATE)) {
-                                    // don't add to signature
-                                } else {
-                                    throw new IllegalStateException("Only :public and :private are legal values of :access");
                                 }
                                 // END access handling
                                 // BEGIN constructor handling
@@ -1833,27 +1852,13 @@ public static class RecordReader extends AFn {
                                         // the mapping is {[String] []}.
                                         Object superConstructorsVal = metaMap.get(SUPER_CTORS_KEY);
                                         if (superConstructorsVal != null) {
-                                            // Convenience that just specifies the super constructor signature.
-                                            // Works when class being generated has single arity
-                                            // that obviously maps to this super class signature.
-                                            System.out.println("META MAP: " + metaMap);
-                                            if (superConstructorsVal instanceof PersistentVector) {
-                                                // TODO
-                                                // 1. Grab arglists out of metadata
-                                                // 2. Associate the only arity of this function with this value
-                                            } else if (superConstructorsVal instanceof Map) {
+                                            if (superConstructorsVal instanceof Map) {
                                                 genClassConstructors = (IPersistentMap) superConstructorsVal;
                                             } else {
-                                                throw new IllegalArgumentException("The :super-constructors entry must either be a single vector specifying the super class' constructor signature, or a map of this class' constructor signatures to their corresponding super class signatures.");
+                                                throw new IllegalArgumentException("The :super-constructors entry must be a map of this class' constructor signatures to their corresponding super class signatures.");
                                             }
-
                                         } else {
-                                            System.out.println("WARNING: You defined a constructor for your class but did not specify what super-class constructor to invoke in a :super-constructor entry on your constructor method. Defaulting to a no-arg super class constructor.");
-                                            // TODO
-                                            // 1. Grab arglists out of metadata
-                                            // 2. Associate the only arity of this function with no-arg arity for super
-                                            genClassConstructors = PersistentHashMap.EMPTY
-                                                .assoc(PersistentVector.EMPTY, PersistentVector.EMPTY);
+                                            throw new IllegalArgumentException("You must provide a :super-constructors entry that is a map of this class' constructor signatures to their corresponding super class signatures.");
                                         }
                                     }
                                 }
@@ -1893,15 +1898,17 @@ public static class RecordReader extends AFn {
             genClassForm.add(genClassConstructors);
         }
 
-        finalForm.add(PersistentList.create(genClassForm));
+        // gen-class doesn't have to be at the beginning,
+        // but usually is in examples. Put it after `do`
+        finalForm.add(1, PersistentList.create(genClassForm));
         return finalForm;
     }
 
     public static List analyzeJavaMethod(List forms) {
-        return analyzeJavaMethod(forms, false);
+        return analyzeJavaMethod(forms, MethodTypes.NORMAL);
     }
 
-    public static List analyzeJavaMethod(List forms, Boolean isCtor) {
+    public static List analyzeJavaMethod(List forms, MethodTypes methodType) {
         List finalForm = new ArrayList();
         // First form is `defn` per readReservedForm invocation
         finalForm.add(forms.get(0));
@@ -1919,10 +1926,12 @@ public static class RecordReader extends AFn {
 
         // TODO Support optional docstring in next position
 
-        // Any methods other than "main" need their signatures
-        // added explicitly to the gen-class form.
+        // Only unique methods get added to the signature.
+        // The ctor and any implemented methods of interfaces
+        // are not added.
         PersistentVector args = (PersistentVector) forms.get(2);
-        if (!methodName.equals(JAVA_MAIN_METHOD) && !isCtor) {
+        if (!methodName.equals(JAVA_MAIN_METHOD) &&
+            methodType == MethodTypes.NORMAL) {
             List signature = new ArrayList();
             for (int i = 0; i < args.size(); i++) {
                 Object arg = args.nth(i);
@@ -1947,7 +1956,7 @@ public static class RecordReader extends AFn {
 
             // Add the methodName and attach the metadata of our attrs to it
             finalForm.add(methodName.withMeta(methodMeta));
-        } else if (isCtor) {
+        } else if (methodType == MethodTypes.CTOR) {
             // Add {:constructor true} to metadata for use by analyzeJavaClass
             methodMeta = methodMeta.assoc(CTOR_KEY, RT.T);
             finalForm.add(methodName.withMeta(methodMeta));

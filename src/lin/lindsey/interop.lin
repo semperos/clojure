@@ -24,18 +24,22 @@ end
 
 java-class StringIterator implements java.util.Iterator
 
-  constructor [^String s]
-    super()
-    atom({:index 0 :s s})
+  java-constructor ^{:super-constructors {[String] []}}
+    init [^String s]
+    ;; TODO We parse this defn anyway, store the
+    ;; argslist ourselves and just make the ctor here
+    ;; return the value of the state. Would need to handle
+    ;; multiple arities, too.
+    [[] atom({:index 0 :s s})]
   end
 
-  java-method ^Boolean hasNext []
+  java-impl ^Boolean hasNext []
     let [{:keys [s index]} = deref(this.state())]
       <(index, count(s))
     end
   end
 
-  java-method ^Character next []
+  java-impl ^Character next []
     let [{:keys [s index]} = deref(this.state())
          ch = s.charAt(index)]
       swap!(this.state(), assoc, :index, inc(index))
@@ -44,53 +48,3 @@ java-class StringIterator implements java.util.Iterator
   end
 
 end
-
-;; (ns clojure.examples.instance
-;;     (:gen-class
-;;      :implements [java.util.Iterator]
-;;      :init init
-;;      :constructors {[String] []}
-;;      :state state))
-
-;; java-class MyClass
-;;   java-method ^{:access :public,
-;;                 :return void
-;;                 :static true}
-;;     main [& args]
-;;       println("Wowza!")
-;;   end
-
-;;   java-method ^{:access :public,
-;;                 :return String,
-;;                 :static true}
-;;     addStr [^String s]
-;;       str(s, " wowza sauce!")
-;;   end
-;; end
-
-;; State will always be accessed as `.state`
-;; and the value of constructors is the state.
-
-;; java-class StringIterator implements java.util.Iterator
-;;   constructor StringIterator [String startingString]
-;;     ;; super(...)
-;;     atom({:index 0, :s startingString})
-;;   end
-
-;;   method hasNext []
-;;     let [{:keys [s index]} = this.state.deref()]
-;;       <(index, count(s))
-;;     end
-;;   end
-
-;;   method next []
-;;     let [{:keys [s index]} = this.state.deref()
-;;          ch = s.charAt(index)]
-;;       dosync
-;;         alter(this.state, assoc, :index, inc(index))
-;;       end
-;;       ch
-;;     end
-;;   end
-
-;; end

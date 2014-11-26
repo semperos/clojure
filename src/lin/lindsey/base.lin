@@ -16,6 +16,56 @@ function foo
   end
 end
 
+function multi-arity
+  "Handle multiple arity correctly"
+  arity [x]
+    (* x 3)
+  end
+  arity [x y]
+    (* x y)
+  end
+end
+
+function method-call
+  "Instance method call example"
+  [s]
+  s.substring(0,3)
+end
+
+function random-uuid
+  "A static method call to UUID.randomUUID()"
+  []
+  java.util.UUID/randomUUID()
+end
+
+record Employee [name title salary] end
+
+;; (defprotocol Sellable
+;;   (calculate-tax [this base rate]))
+protocol Sellable
+  proto-method calculate-tax [this base rate] end
+end
+
+record Product [a b]
+  extends Sellable
+    impl calculate-tax [this base rate]
+      println("Calculate taxes!")
+      *(base, rate)
+    end
+  end
+end
+
+multi validate juxt(:lang, :type) end
+
+method validate ["English" "greeting"]
+  [m]
+  let [phrase = get(m, :phrase),
+       lc = clojure.string/lower-case
+       greetings = #{"hello" "good morning" "good afternoon" "good evening"}]
+    greetings(lc(phrase))
+  end
+end
+
 function simple-if
   "Single-branch if"
   [num]
@@ -78,55 +128,5 @@ function really-complex-if
   else
     println("Branch 3")
     println("It's zero!")
-  end
-end
-
-function multi-arity
-  "Handle multiple arity correctly"
-  arity [x]
-    (* x 3)
-  end
-  arity [x y]
-    (* x y)
-  end
-end
-
-function method-call
-  "Instance method call example"
-  [s]
-  s.substring(0,3)
-end
-
-function random-uuid
-  "A static method call to UUID.randomUUID()"
-  []
-  java.util.UUID/randomUUID()
-end
-
-record Employee [name title salary] end
-
-;; (defprotocol Sellable
-;;   (calculate-tax [this base rate]))
-protocol Sellable
-  proto-method calculate-tax [this base rate] end
-end
-
-record Product [a b]
-  extends Sellable
-    impl calculate-tax [this base rate]
-      println("Calculate taxes!")
-      *(base, rate)
-    end
-  end
-end
-
-multi validate juxt(:lang, :type) end
-
-method validate ["English" "greeting"]
-  [m]
-  let [phrase = get(m, :phrase),
-       lc = clojure.string/lower-case
-       greetings = #{"hello" "good morning" "good afternoon" "good evening"}]
-    greetings(lc(phrase))
   end
 end
